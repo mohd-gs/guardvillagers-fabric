@@ -234,6 +234,8 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
             }
         }
         this.readPersistentAngerSaveData(this.level(), input);
+        // Load gossip data
+        this.gossips.update(input, "Gossips");
     }
 
     @Override
@@ -267,6 +269,8 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
                 typedoutputlist.add(new ItemStackWithSlot(i, itemstack));
             }
         }
+        // Save gossip data
+        this.gossips.store(output, "Gossips");
     }
 
     public static int slotToInventoryIndex(EquipmentSlot slot) {
@@ -297,14 +301,11 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
             return;
         }
         InteractionHand hand = this.getUsedItemHand();
-        if (!this.useItem.equals(this.getItemInHand(hand))) {
-            this.releaseUsingItem();
+        ItemStack useItemStack = this.getItemInHand(hand);
+        if (useItemStack.isEmpty()) {
             return;
         }
-        if (this.useItem.isEmpty()) {
-            return;
-        }
-        ItemStack consumedStack = this.useItem.copy();
+        ItemStack consumedStack = useItemStack.copy();
         if (Guard.isConsumable(consumedStack)) {
             FoodProperties food = consumedStack.get(DataComponents.FOOD);
             if (food != null) {
@@ -312,12 +313,9 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
             }
         }
         // Fabric: Removed EventHooks.onItemUseFinish() - just use finishUsingItem directly
-        ItemStack result = this.useItem.finishUsingItem(this.level(), this);
-        if (result != this.useItem) {
+        ItemStack result = useItemStack.finishUsingItem(this.level(), this);
+        if (result != useItemStack) {
             this.setItemInHand(hand, result);
-        }
-        if (this.useItem.getUseAnimation() != ItemUseAnimation.EAT) {
-            this.useItem.shrink(1);
         }
         this.stopUsingItem();
     }
@@ -654,12 +652,12 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
     public void setItemSlot(EquipmentSlot slotIn, ItemStack stack) {
         super.setItemSlot(slotIn, stack);
         switch (slotIn) {
-            case CHEST -> this.guardInventory.setItem(1, this.equipment.get(slotIn));
-            case FEET -> this.guardInventory.setItem(3, this.equipment.get(slotIn));
-            case HEAD -> this.guardInventory.setItem(0, this.equipment.get(slotIn));
-            case LEGS -> this.guardInventory.setItem(2, this.equipment.get(slotIn));
-            case MAINHAND -> this.guardInventory.setItem(5, this.equipment.get(slotIn));
-            case OFFHAND -> this.guardInventory.setItem(4, this.equipment.get(slotIn));
+            case CHEST -> this.guardInventory.setItem(1, stack);
+            case FEET -> this.guardInventory.setItem(3, stack);
+            case HEAD -> this.guardInventory.setItem(0, stack);
+            case LEGS -> this.guardInventory.setItem(2, stack);
+            case MAINHAND -> this.guardInventory.setItem(5, stack);
+            case OFFHAND -> this.guardInventory.setItem(4, stack);
         }
     }
 
@@ -882,7 +880,9 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
     }
 
     public static List<ItemStack> getItemsFromLootTable(LivingEntity entity) {
+        if (entity.level().getServer() == null) return List.of();
         LootTable loot = entity.level().getServer().reloadableRegistries().getLootTable(getLootTableFromData());
+        if (loot == null) return List.of();
         LootParams.Builder lootcontext$builder = (new LootParams.Builder((ServerLevel) entity.level()).withParameter(LootContextParams.THIS_ENTITY, entity));
         return loot.getRandomItems(lootcontext$builder.create(GuardLootTables.SLOT));
     }
@@ -1581,7 +1581,8 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
             List<Entity> list = mob.level().getEntities(mob, aabb);
             for (Entity guard : list) {
                 if (guard != mob.getTarget()) {
-                    boolean isVillager = ((Guard) mob).getOwner() == guard || guard.getType() == EntityType.VILLAGER || guard.getType() == GuardEntityType.GUARD || guard.getType() == EntityType.IRON_GOLEM;
+                    boolean isOwner = mob instanceof Guard guardMob && guardMob.getOwner() == guard;
+                    boolean isVillager = isOwner || guard.getType() == EntityType.VILLAGER || guard.getType() == GuardEntityType.GUARD || guard.getType() == EntityType.IRON_GOLEM;
                     if (isVillager) {
                         Vec3 vector3d = mob.getLookAngle();
                         Vec3 vector3d1 = guard.position().vectorTo(mob.position()).normalize();
@@ -1788,7 +1789,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
         @Override
         public boolean canContinueToUse() {
-            return this.canUse() && this.guard.getNavigation().isInProgress() && stop;
+            return this.canUse() && !this.guard.getNavigation().isDone() && stop;
         }
 
         @Override

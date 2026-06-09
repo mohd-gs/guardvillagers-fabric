@@ -1,6 +1,7 @@
 package tallestegg.guardvillagers.common.entities.ai.tasks;
 
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.EquipmentSlot;
@@ -12,12 +13,22 @@ import net.minecraft.world.entity.ai.memory.MemoryStatus;
 import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import tallestegg.guardvillagers.GuardEntityType;
 import tallestegg.guardvillagers.common.entities.Guard;
 
 import java.util.Set;
 
 public class ShareGossipWithGuard extends Behavior<Villager> {
+    // Replaces Villager.FOOD_POINTS.keySet() which may not exist in 26.1.x
+    // These are the food items that villagers traditionally accept
+    private static final Set<Item> VILLAGER_FOODS = ImmutableSet.of(
+            Items.BREAD,
+            Items.CARROT,
+            Items.POTATO,
+            Items.BEETROOT
+    );
+
     public ShareGossipWithGuard() {
         super(ImmutableMap.of(MemoryModuleType.INTERACTION_TARGET, MemoryStatus.VALUE_PRESENT, MemoryModuleType.NEAREST_VISIBLE_LIVING_ENTITIES, MemoryStatus.VALUE_PRESENT));
     }
@@ -46,7 +57,7 @@ public class ShareGossipWithGuard extends Behavior<Villager> {
             guard.gossip(pOwner, pGameTime);
         }
         if (pOwner.hasExcessFood() && guard.getOffhandItem().isEmpty()) {
-            throwHalfStack(pOwner, Villager.FOOD_POINTS.keySet(), guard);
+            throwHalfStack(pOwner, VILLAGER_FOODS, guard);
         }
     }
 

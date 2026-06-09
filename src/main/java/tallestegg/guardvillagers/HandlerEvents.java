@@ -238,12 +238,12 @@ public class HandlerEvents {
         guard.setPersistenceRequired();
         guard.setCustomName(villager.getCustomName());
         guard.setCustomNameVisible(villager.isCustomNameVisible());
-        guard.setDropChance(EquipmentSlot.HEAD, 100.0F);
-        guard.setDropChance(EquipmentSlot.CHEST, 100.0F);
-        guard.setDropChance(EquipmentSlot.FEET, 100.0F);
-        guard.setDropChance(EquipmentSlot.LEGS, 100.0F);
-        guard.setDropChance(EquipmentSlot.MAINHAND, 100.0F);
-        guard.setDropChance(EquipmentSlot.OFFHAND, 100.0F);
+        guard.setDropChance(EquipmentSlot.HEAD, 1.0F);
+        guard.setDropChance(EquipmentSlot.CHEST, 1.0F);
+        guard.setDropChance(EquipmentSlot.FEET, 1.0F);
+        guard.setDropChance(EquipmentSlot.LEGS, 1.0F);
+        guard.setDropChance(EquipmentSlot.MAINHAND, 1.0F);
+        guard.setDropChance(EquipmentSlot.OFFHAND, 1.0F);
         guard.getGossips().add(player.getUUID(), GossipType.MINOR_POSITIVE, GuardConfig.COMMON.reputationRequirement);
         villager.level().addFreshEntity(guard);
         villager.discard();

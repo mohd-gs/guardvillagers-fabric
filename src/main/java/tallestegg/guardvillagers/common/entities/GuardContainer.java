@@ -219,7 +219,7 @@ public class GuardContainer extends AbstractContainerMenu {
                     if (!this.moveItemStackTo(itemstack1, j, k, false)) {
                         return ItemStack.EMPTY;
                     }
-                } else if (!this.moveItemStackTo(itemstack1, j, j, false)) {
+                } else if (!this.moveItemStackTo(itemstack1, i, j, false)) {
                     return ItemStack.EMPTY;
                 }
                 return ItemStack.EMPTY;

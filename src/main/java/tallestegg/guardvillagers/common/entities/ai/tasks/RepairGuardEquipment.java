@@ -33,7 +33,7 @@ public class RepairGuardEquipment extends VillagerHelp {
             if (!list.isEmpty()) {
                 for (LivingEntity livingEntity : list) {
                     if (!livingEntity.isInvisible() && livingEntity.isAlive() && livingEntity instanceof Guard guard) {
-                        if (owner.getVillagerData().profession() == VillagerProfession.ARMORER) {
+                        if (owner.getVillagerData().profession().is(VillagerProfession.ARMORER)) {
                             for (int i = 0; i < guard.guardInventory.getContainerSize() - 2; ++i) {
                                 ItemStack itemstack = guard.guardInventory.getItem(i);
                                 if (itemstack.isDamaged() && isHumanoidArmor(itemstack) && itemstack.getDamageValue() >= (itemstack.getMaxDamage() / 2)) {
@@ -92,8 +92,7 @@ public class RepairGuardEquipment extends VillagerHelp {
         BehaviorUtils.setWalkAndLookTargetMemories(healer, guard, 0.5F, 0);
         if (healer.distanceTo(guard) <= 2.0D) {
             GuardDataAttachments.incrementTimesRepairedGuard(healer.getUUID());
-            VillagerProfession profession = healer.getVillagerData().profession().value();
-            if (profession.name() == VillagerProfession.ARMORER) {
+            if (healer.getVillagerData().profession().is(VillagerProfession.ARMORER)) {
                 for (int i = 0; i < guard.guardInventory.getContainerSize() - 2; ++i) {
                     ItemStack itemstack = guard.guardInventory.getItem(i);
                     if (itemstack.isDamaged() && isHumanoidArmor(itemstack) && itemstack.getDamageValue() >= (itemstack.getMaxDamage() / 2) + guard.getRandom().nextInt(5)) {

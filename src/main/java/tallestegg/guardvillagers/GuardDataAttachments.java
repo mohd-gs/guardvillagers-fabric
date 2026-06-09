@@ -4,6 +4,7 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.npc.villager.Villager;
+import tallestegg.guardvillagers.common.entities.Guard;
 
 import java.util.Map;
 import java.util.UUID;
@@ -29,7 +30,7 @@ public class GuardDataAttachments {
      */
     public static void registerCleanup() {
         ServerEntityEvents.ENTITY_UNLOAD.register((Entity entity, ServerLevel level) -> {
-            if (entity instanceof Villager) {
+            if (entity instanceof Villager || entity instanceof Guard) {
                 removeEntity(entity.getUUID());
             }
         });
