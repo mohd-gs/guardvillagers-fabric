@@ -22,11 +22,11 @@ import tallestegg.guardvillagers.networking.GuardFollowPacket;
 import tallestegg.guardvillagers.networking.GuardSetPatrolPosPacket;
 
 public class GuardInventoryScreen extends AbstractContainerScreen<GuardContainer> {
-    private static final Identifier GUARD_GUI_TEXTURES = Identifier.of(GuardVillagers.MODID, "textures/container/inventory.png");
-    private static final WidgetSprites GUARD_FOLLOWING_ICONS = new WidgetSprites(Identifier.of(GuardVillagers.MODID, "following/following"), Identifier.of(GuardVillagers.MODID, "following/following_highlighted"));
-    private static final WidgetSprites GUARD_NOT_FOLLOWING_ICONS = new WidgetSprites(Identifier.of(GuardVillagers.MODID, "following/not_following"), Identifier.of(GuardVillagers.MODID, "following/not_following_highlighted"));
-    private static final WidgetSprites GUARD_PATROLLING_ICONS = new WidgetSprites(Identifier.of(GuardVillagers.MODID, "patrolling/patrolling1"), Identifier.of(GuardVillagers.MODID, "patrolling/patrolling2"));
-    private static final WidgetSprites GUARD_NOT_PATROLLING_ICONS = new WidgetSprites(Identifier.of(GuardVillagers.MODID, "patrolling/notpatrolling1"), Identifier.of(GuardVillagers.MODID, "patrolling/notpatrolling2"));
+    private static final Identifier GUARD_GUI_TEXTURES = Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "textures/container/inventory.png");
+    private static final WidgetSprites GUARD_FOLLOWING_ICONS = new WidgetSprites(Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "following/following"), Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "following/following_highlighted"));
+    private static final WidgetSprites GUARD_NOT_FOLLOWING_ICONS = new WidgetSprites(Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "following/not_following"), Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "following/not_following_highlighted"));
+    private static final WidgetSprites GUARD_PATROLLING_ICONS = new WidgetSprites(Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "patrolling/patrolling1"), Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "patrolling/patrolling2"));
+    private static final WidgetSprites GUARD_NOT_PATROLLING_ICONS = new WidgetSprites(Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "patrolling/notpatrolling1"), Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "patrolling/notpatrolling2"));
     private static final Identifier ARMOR_EMPTY_SPRITE = Identifier.withDefaultNamespace("hud/armor_empty");
     private static final Identifier ARMOR_HALF_SPRITE = Identifier.withDefaultNamespace("hud/armor_half");
     private static final Identifier ARMOR_FULL_SPRITE = Identifier.withDefaultNamespace("hud/armor_full");

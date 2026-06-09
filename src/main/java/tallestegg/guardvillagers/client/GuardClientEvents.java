@@ -2,6 +2,7 @@ package tallestegg.guardvillagers.client;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.client.rendering.v1.ModelLayerRegistry;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.geom.ModelLayerLocation;
 import net.minecraft.client.model.geom.builders.CubeDeformation;
@@ -15,11 +16,12 @@ import tallestegg.guardvillagers.client.models.GuardArmorModel;
 import tallestegg.guardvillagers.client.models.GuardModel;
 import tallestegg.guardvillagers.client.models.GuardSteveModel;
 import tallestegg.guardvillagers.client.renderer.GuardRenderer;
+import tallestegg.guardvillagers.client.network.GuardPacketHandler;
 import tallestegg.guardvillagers.networking.GuardOpenInventoryPacket;
 
 public final class GuardClientEvents implements ClientModInitializer {
     private static Identifier id(String path) {
-        return Identifier.of(GuardVillagers.MODID, path);
+        return Identifier.fromNamespaceAndPath(GuardVillagers.MODID, path);
     }
 
     public static final ModelLayerLocation GUARD = new ModelLayerLocation(id("guard"), "main");
@@ -38,8 +40,8 @@ public final class GuardClientEvents implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         // Register layer definitions
-        net.fabricmc.fabric.api.client.rendering.v1.EntityModelLayerRegistry.registerModelLayer(GUARD, GuardModel::createBodyLayer);
-        net.fabricmc.fabric.api.client.rendering.v1.EntityModelLayerRegistry.registerModelLayer(GUARD_STEVE, GuardSteveModel::createMesh);
+        ModelLayerRegistry.registerModelLayer(GUARD, GuardModel::createBodyLayer);
+        ModelLayerRegistry.registerModelLayer(GUARD_STEVE, GuardSteveModel::createMesh);
         registerArmorLayerDefs(GUARD_ARMOR, GuardArmorModel.createArmorMeshSet(new CubeDeformation(0.5F), new CubeDeformation(1.0F)));
         registerArmorLayerDefs(GUARD_STEVE_ARMOR, HumanoidModel.createArmorMeshSet(new CubeDeformation(0.5F), new CubeDeformation(1.0F)));
 
@@ -49,15 +51,15 @@ public final class GuardClientEvents implements ClientModInitializer {
         // Register client packet receiver
         ClientPlayNetworking.registerGlobalReceiver(GuardOpenInventoryPacket.ID, (payload, context) -> {
             context.client().execute(() -> {
-                tallestegg.guardvillagers.GuardPacketHandler.openGuardInventory(payload);
+                GuardPacketHandler.openGuardInventory(payload);
             });
         });
     }
 
     private static void registerArmorLayerDefs(ArmorModelSet<ModelLayerLocation> targets, ArmorModelSet<MeshDefinition> meshes) {
-        net.fabricmc.fabric.api.client.rendering.v1.EntityModelLayerRegistry.registerModelLayer(targets.head(), () -> LayerDefinition.create(meshes.head(), 64, 32));
-        net.fabricmc.fabric.api.client.rendering.v1.EntityModelLayerRegistry.registerModelLayer(targets.chest(), () -> LayerDefinition.create(meshes.chest(), 64, 32));
-        net.fabricmc.fabric.api.client.rendering.v1.EntityModelLayerRegistry.registerModelLayer(targets.legs(), () -> LayerDefinition.create(meshes.legs(), 64, 32));
-        net.fabricmc.fabric.api.client.rendering.v1.EntityModelLayerRegistry.registerModelLayer(targets.feet(), () -> LayerDefinition.create(meshes.feet(), 64, 32));
+        ModelLayerRegistry.registerModelLayer(targets.head(), () -> LayerDefinition.create(meshes.head(), 64, 32));
+        ModelLayerRegistry.registerModelLayer(targets.chest(), () -> LayerDefinition.create(meshes.chest(), 64, 32));
+        ModelLayerRegistry.registerModelLayer(targets.legs(), () -> LayerDefinition.create(meshes.legs(), 64, 32));
+        ModelLayerRegistry.registerModelLayer(targets.feet(), () -> LayerDefinition.create(meshes.feet(), 64, 32));
     }
 }

@@ -6,5 +6,5 @@ import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
 
 public class GuardVillagerTags {
-    public static final TagKey<Item> GUARD_CONVERT = TagKey.create(Registries.ITEM, Identifier.of(GuardVillagers.MODID, "convertible_guard_items"));
+    public static final TagKey<Item> GUARD_CONVERT = TagKey.create(Registries.ITEM, Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "convertible_guard_items"));
 }

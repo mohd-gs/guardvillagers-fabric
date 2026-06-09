@@ -1,0 +1,22 @@
+accessWidener v2 official
+
+# Mob - goalSelector and targetSelector are protected
+accessible field net/minecraft/world/entity/Mob goalSelector Lnet/minecraft/world/entity/ai/goal/GoalSelector;
+accessible field net/minecraft/world/entity/Mob targetSelector Lnet/minecraft/world/entity/ai/goal/GoalSelector;
+
+# Entity - getEncodeId is protected
+accessible method net/minecraft/world/entity/Entity getEncodeId ()Ljava/lang/String;
+
+# Gui.HeartType is package-private
+accessible class net/minecraft/client/gui/Gui$HeartType
+
+# MeleeAttackGoal.path is private
+accessible field net/minecraft/world/entity/ai/goal/MeleeAttackGoal path Lnet/minecraft/world/level/pathfinder/Path;
+
+# ServerPlayer private members
+accessible field net/minecraft/server/level/ServerPlayer containerCounter I
+accessible method net/minecraft/server/level/ServerPlayer nextContainerCounter ()V
+accessible method net/minecraft/server/level/ServerPlayer initMenu (Lnet/minecraft/world/inventory/AbstractContainerMenu;)V
+
+# LivingEntity.hurtArmor is protected
+accessible method net/minecraft/world/entity/LivingEntity hurtArmor (Lnet/minecraft/world/damagesource/DamageSource;F)V

@@ -2,12 +2,12 @@ package tallestegg.guardvillagers;
 
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
-import net.fabricmc.fabric.api.entity.event.v1.ServerEntityEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.minecraft.advancements.CriteriaTriggers;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.particles.ParticleTypes;
-import net.minecraft.core.ResourceKey;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
@@ -44,7 +44,7 @@ import net.minecraft.world.level.block.entity.BellBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
-import tallestegg.guardvillagers.client.GuardSounds;
+import tallestegg.guardvillagers.GuardSounds;
 import tallestegg.guardvillagers.common.entities.Guard;
 import tallestegg.guardvillagers.common.entities.ai.goals.AttackEntityDaytimeGoal;
 import tallestegg.guardvillagers.common.entities.ai.goals.GetOutOfWaterGoal;
@@ -187,7 +187,8 @@ public class HandlerEvents {
     }
 
     // UseBlockCallback
-    public static InteractionResult onBlockInteract(Player player, Level level, InteractionHand hand, BlockPos pos, net.minecraft.world.phys.BlockHitResult hitResult) {
+    public static InteractionResult onBlockInteract(Player player, Level level, InteractionHand hand, net.minecraft.world.phys.BlockHitResult hitResult) {
+        BlockPos pos = hitResult.getBlockPos();
         BlockState originalBlock = level.getBlockState(pos);
         if (GuardConfig.COMMON.multiFollow) {
             if (originalBlock.getBlock() instanceof BellBlock && level.getBlockEntity(pos) instanceof BellBlockEntity bellBlockEntity) {
@@ -206,7 +207,7 @@ public class HandlerEvents {
                             }
                         }
                     }
-                    return InteractionResult.sidedSuccess(level.isClientSide());
+                    return InteractionResult.SUCCESS_SERVER;
                 }
             }
         }

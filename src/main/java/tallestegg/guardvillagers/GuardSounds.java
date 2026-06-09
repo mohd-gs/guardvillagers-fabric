@@ -8,32 +8,32 @@ import net.minecraft.sounds.SoundEvent;
 public class GuardSounds {
     public static final SoundEvent GUARD_AMBIENT = Registry.register(
             BuiltInRegistries.SOUND_EVENT,
-            Identifier.of(GuardVillagers.MODID, "entity.guard.ambient"),
-            SoundEvent.createVariableRangeEvent(Identifier.of(GuardVillagers.MODID, "entity.guard.ambient"))
+            Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "entity.guard.ambient"),
+            SoundEvent.createVariableRangeEvent(Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "entity.guard.ambient"))
     );
 
     public static final SoundEvent GUARD_DEATH = Registry.register(
             BuiltInRegistries.SOUND_EVENT,
-            Identifier.of(GuardVillagers.MODID, "entity.guard.death"),
-            SoundEvent.createVariableRangeEvent(Identifier.of(GuardVillagers.MODID, "entity.guard.death"))
+            Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "entity.guard.death"),
+            SoundEvent.createVariableRangeEvent(Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "entity.guard.death"))
     );
 
     public static final SoundEvent GUARD_HURT = Registry.register(
             BuiltInRegistries.SOUND_EVENT,
-            Identifier.of(GuardVillagers.MODID, "entity.guard.hurt"),
-            SoundEvent.createVariableRangeEvent(Identifier.of(GuardVillagers.MODID, "entity.guard.hurt"))
+            Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "entity.guard.hurt"),
+            SoundEvent.createVariableRangeEvent(Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "entity.guard.hurt"))
     );
 
     public static final SoundEvent GUARD_YES = Registry.register(
             BuiltInRegistries.SOUND_EVENT,
-            Identifier.of(GuardVillagers.MODID, "entity.guard.yes"),
-            SoundEvent.createVariableRangeEvent(Identifier.of(GuardVillagers.MODID, "entity.guard.yes"))
+            Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "entity.guard.yes"),
+            SoundEvent.createVariableRangeEvent(Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "entity.guard.yes"))
     );
 
     public static final SoundEvent GUARD_NO = Registry.register(
             BuiltInRegistries.SOUND_EVENT,
-            Identifier.of(GuardVillagers.MODID, "entity.guard.no"),
-            SoundEvent.createVariableRangeEvent(Identifier.of(GuardVillagers.MODID, "entity.guard.no"))
+            Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "entity.guard.no"),
+            SoundEvent.createVariableRangeEvent(Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "entity.guard.no"))
     );
 
     public static void register() {

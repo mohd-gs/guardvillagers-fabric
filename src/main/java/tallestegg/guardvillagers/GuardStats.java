@@ -8,8 +8,8 @@ import net.minecraft.stats.Stat;
 public class GuardStats {
     public static final Identifier GUARDS_MADE = Registry.register(
             BuiltInRegistries.CUSTOM_STAT,
-            Identifier.of(GuardVillagers.MODID, "guards_made"),
-            Identifier.of(GuardVillagers.MODID, "guards_made")
+            Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "guards_made"),
+            Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "guards_made")
     );
 
     public static void register() {

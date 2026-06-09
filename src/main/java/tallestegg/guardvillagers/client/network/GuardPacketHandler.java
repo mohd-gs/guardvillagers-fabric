@@ -1,4 +1,4 @@
-package tallestegg.guardvillagers;
+package tallestegg.guardvillagers.client.network;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.Entity;

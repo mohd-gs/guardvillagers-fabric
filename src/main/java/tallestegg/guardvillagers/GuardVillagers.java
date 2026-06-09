@@ -4,19 +4,21 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
-import net.fabricmc.fabric.api.entity.event.v1.ServerEntityEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.CreativeModeTabs;
+import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.ItemStack;
-import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
+import net.fabricmc.fabric.api.creativetab.v1.CreativeModeTabEvents;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import tallestegg.guardvillagers.client.GuardSounds;
+import tallestegg.guardvillagers.GuardSounds;
 import tallestegg.guardvillagers.common.entities.Guard;
 import tallestegg.guardvillagers.configuration.GuardConfig;
 import tallestegg.guardvillagers.loot_tables.GuardLootTables;
@@ -25,6 +27,8 @@ import tallestegg.guardvillagers.networking.GuardNetworking;
 public class GuardVillagers implements ModInitializer {
     public static final String MODID = "guardvillagers";
     public static final Logger LOGGER = LoggerFactory.getLogger(MODID);
+
+    private static final ResourceKey<CreativeModeTab> SPAWN_EGGS_TAB = ResourceKey.create(Registries.CREATIVE_MODE_TAB, Identifier.fromNamespaceAndPath("minecraft", "spawn_eggs"));
 
     @Override
     public void onInitialize() {
@@ -39,12 +43,14 @@ public class GuardVillagers implements ModInitializer {
 
         FabricDefaultAttributeRegistry.register(GuardEntityType.GUARD, Guard.createAttributes());
 
-        ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.SPAWN_EGGS).register(content -> {
-            content.add(GuardItems.GUARD_SPAWN_EGG);
-            content.add(GuardItems.ILLUSIONER_SPAWN_EGG);
+        CreativeModeTabEvents.modifyOutputEvent(SPAWN_EGGS_TAB).register(output -> {
+            output.accept(GuardItems.GUARD_SPAWN_EGG);
+            output.accept(GuardItems.ILLUSIONER_SPAWN_EGG);
         });
 
         HandlerEvents.register();
+
+        GuardDataAttachments.registerCleanup();
 
         UseEntityCallback.EVENT.register(HandlerEvents::onEntityInteract);
         UseBlockCallback.EVENT.register(HandlerEvents::onBlockInteract);

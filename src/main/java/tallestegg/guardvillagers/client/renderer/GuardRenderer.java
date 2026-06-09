@@ -32,7 +32,7 @@ import tallestegg.guardvillagers.configuration.GuardConfig;
 public class GuardRenderer extends HumanoidMobRenderer<Guard, GuardRenderState, HumanoidModel<GuardRenderState>> {
 
     private static Identifier baseTexture() {
-        return Identifier.of(
+        return Identifier.fromNamespaceAndPath(
                 GuardVillagers.MODID,
                 "textures/entity/guard/guard" + (GuardConfig.CLIENT.GuardSteve ? "_steve" : "") + ".png"
         );
@@ -192,12 +192,12 @@ public class GuardRenderer extends HumanoidMobRenderer<Guard, GuardRenderState, 
         @Override
         public void submit(PoseStack poseStack, SubmitNodeCollector nodeCollector, int packedLight, GuardRenderState state, float yRot, float xRot) {
             String guardSteve = GuardConfig.CLIENT.GuardSteve ? "_steve" : "";
-            Identifier variantTexture = Identifier.of(
+            Identifier variantTexture = Identifier.fromNamespaceAndPath(
                     GuardVillagers.MODID,
                     "textures/entity/guard/guard_variants/guard" + guardSteve + "_" + state.variant + ".png"
             );
             if (this.resourceManager.getResource(variantTexture).isEmpty()) {
-                variantTexture = Identifier.of(
+                variantTexture = Identifier.fromNamespaceAndPath(
                         GuardVillagers.MODID,
                         "textures/entity/guard/guard_variants/guard" + guardSteve + "_plains.png"
                 );

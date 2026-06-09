@@ -8,6 +8,7 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.equipment.Equippable;
 import net.minecraft.resources.Identifier;
 import tallestegg.guardvillagers.GuardVillagers;
 
@@ -23,7 +24,7 @@ public class GuardContainer extends AbstractContainerMenu {
         this.addSlot(new Slot(guardInventory, 0, 8, 8) {
             @Override
             public boolean mayPlace(ItemStack stack) {
-                return stack.canEquip(EquipmentSlot.HEAD, guard) && GuardVillagers.hotvChecker(playerInventory.player, guard);
+                return canEquipInSlot(stack, EquipmentSlot.HEAD) && GuardVillagers.hotvChecker(playerInventory.player, guard);
             }
 
             @Override
@@ -50,7 +51,7 @@ public class GuardContainer extends AbstractContainerMenu {
         this.addSlot(new Slot(guardInventory, 1, 8, 26) {
             @Override
             public boolean mayPlace(ItemStack stack) {
-                return stack.canEquip(EquipmentSlot.CHEST, guard) && GuardVillagers.hotvChecker(playerInventory.player, guard);
+                return canEquipInSlot(stack, EquipmentSlot.CHEST) && GuardVillagers.hotvChecker(playerInventory.player, guard);
             }
 
             @Override
@@ -77,7 +78,7 @@ public class GuardContainer extends AbstractContainerMenu {
         this.addSlot(new Slot(guardInventory, 2, 8, 44) {
             @Override
             public boolean mayPlace(ItemStack stack) {
-                return stack.canEquip(EquipmentSlot.LEGS, guard) && GuardVillagers.hotvChecker(playerInventory.player, guard);
+                return canEquipInSlot(stack, EquipmentSlot.LEGS) && GuardVillagers.hotvChecker(playerInventory.player, guard);
             }
 
             @Override
@@ -104,7 +105,7 @@ public class GuardContainer extends AbstractContainerMenu {
         this.addSlot(new Slot(guardInventory, 3, 8, 62) {
             @Override
             public boolean mayPlace(ItemStack stack) {
-                return stack.canEquip(EquipmentSlot.FEET, guard) && GuardVillagers.hotvChecker(playerInventory.player, guard);
+                return canEquipInSlot(stack, EquipmentSlot.FEET) && GuardVillagers.hotvChecker(playerInventory.player, guard);
             }
 
             @Override
@@ -175,6 +176,11 @@ public class GuardContainer extends AbstractContainerMenu {
         for (int i1 = 0; i1 < 9; ++i1) {
             this.addSlot(new Slot(playerInventory, i1, 8 + i1 * 18, 142));
         }
+    }
+
+    private static boolean canEquipInSlot(ItemStack stack, EquipmentSlot slot) {
+        Equippable equippable = stack.get(net.minecraft.core.component.DataComponents.EQUIPPABLE);
+        return equippable != null && equippable.slot() == slot;
     }
 
     @Override

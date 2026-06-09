@@ -1,13 +1,18 @@
 package tallestegg.guardvillagers;
 
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.npc.villager.Villager;
+
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Replaces NeoForge AttachmentType system for storing data on Villager entities.
- * Uses a static Map keyed by entity UUID. Data is periodically cleaned up
- * when entities are removed.
+ * Uses a static Map keyed by entity UUID. Data is cleaned up
+ * when entities are removed from the world.
  */
 public class GuardDataAttachments {
     // Per-villager data stored by entity UUID
@@ -17,6 +22,18 @@ public class GuardDataAttachments {
     private static final Map<UUID, Long> LAST_REPAIRED_GOLEM = new ConcurrentHashMap<>();
     private static final Map<UUID, Long> LAST_THROWN_POTION = new ConcurrentHashMap<>();
     private static final Map<UUID, Long> LAST_REPAIRED_GUARD = new ConcurrentHashMap<>();
+
+    /**
+     * Registers the entity unload callback to clean up stale data.
+     * Should be called during mod initialization.
+     */
+    public static void registerCleanup() {
+        ServerEntityEvents.ENTITY_UNLOAD.register((Entity entity, ServerLevel level) -> {
+            if (entity instanceof Villager) {
+                removeEntity(entity.getUUID());
+            }
+        });
+    }
 
     // Times thrown potion
     public static int getTimesThrownPotion(UUID uuid) {

@@ -5,7 +5,7 @@ import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal;
 import net.minecraft.world.entity.ai.util.LandRandomPos;
 import net.minecraft.world.phys.Vec3;
 
-import javax.annotation.Nullable;
+import org.jetbrains.annotations.Nullable;
 
 public class GetOutOfWaterGoal extends WaterAvoidingRandomStrollGoal {
     public GetOutOfWaterGoal(PathfinderMob p_25987_, double p_25988_) {

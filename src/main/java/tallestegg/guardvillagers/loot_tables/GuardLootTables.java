@@ -25,14 +25,14 @@ public class GuardLootTables {
     public static final MapCodec<ArmorSlotFunction> ARMOR_SLOT_CODEC = ArmorSlotFunction.CODEC;
 
     public static void register() {
-        Registry.register(BuiltInRegistries.LOOT_FUNCTION_TYPE, Identifier.of(GuardVillagers.MODID, "slot"), ArmorSlotFunction.CODEC);
+        Registry.register(BuiltInRegistries.LOOT_FUNCTION_TYPE, Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "slot"), ArmorSlotFunction.CODEC);
     }
 
     public static ContextKeySet register(String p_81429_, Consumer<ContextKeySet.Builder> p_81430_) {
         ContextKeySet.Builder lootcontextparamset$builder = new ContextKeySet.Builder();
         p_81430_.accept(lootcontextparamset$builder);
         ContextKeySet lootcontextparamset = lootcontextparamset$builder.build();
-        REGISTRY.put(Identifier.of(GuardVillagers.MODID, p_81429_), lootcontextparamset);
+        REGISTRY.put(Identifier.fromNamespaceAndPath(GuardVillagers.MODID, p_81429_), lootcontextparamset);
         return lootcontextparamset;
     }
 }

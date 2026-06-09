@@ -5,7 +5,8 @@
   "mixins": [
     "VillagerGoalPackagesMixin",
     "DefendVillageGoalGolemMixin",
-    "SinglePoolElementMixin"
+    "SinglePoolElementMixin",
+    "MobSetTargetMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -10,14 +10,14 @@ import net.minecraft.world.item.SpawnEggItem;
 public class GuardItems {
     public static final SpawnEggItem GUARD_SPAWN_EGG = Registry.register(
             BuiltInRegistries.ITEM,
-            Identifier.of(GuardVillagers.MODID, "guard_spawn_egg"),
-            new SpawnEggItem(GuardEntityType.GUARD, 0x5A3F28, 0x3C89A6, new Item.Settings())
+            Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "guard_spawn_egg"),
+            new SpawnEggItem(new Item.Properties().spawnEgg(GuardEntityType.GUARD))
     );
 
     public static final SpawnEggItem ILLUSIONER_SPAWN_EGG = Registry.register(
             BuiltInRegistries.ITEM,
-            Identifier.of(GuardVillagers.MODID, "illusioner_spawn_egg"),
-            new SpawnEggItem(EntityType.ILLUSIONER, 0x7B5E3A, 0x7B8FA6, new Item.Settings())
+            Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "illusioner_spawn_egg"),
+            new SpawnEggItem(new Item.Properties().spawnEgg(EntityType.ILLUSIONER))
     );
 
     public static void register() {

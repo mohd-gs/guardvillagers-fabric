@@ -2,6 +2,7 @@ package tallestegg.guardvillagers.networking;
 
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
@@ -11,11 +12,11 @@ import tallestegg.guardvillagers.GuardVillagers;
 import tallestegg.guardvillagers.common.entities.Guard;
 
 public record GuardSetPatrolPosPacket(int entityId, boolean pressed) implements CustomPacketPayload {
-    public static final CustomPacketPayload.Type<GuardSetPatrolPosPacket> ID = new CustomPacketPayload.Type<>(Identifier.of(GuardVillagers.MODID, "set_patrol_pos"));
+    public static final CustomPacketPayload.Type<GuardSetPatrolPosPacket> ID = new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "set_patrol_pos"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, GuardSetPatrolPosPacket> CODEC = StreamCodec.composite(
-            StreamCodec.of(RegistryFriendlyByteBuf::writeInt, RegistryFriendlyByteBuf::readInt, GuardSetPatrolPosPacket::entityId),
-            StreamCodec.of(RegistryFriendlyByteBuf::writeBoolean, RegistryFriendlyByteBuf::readBoolean, GuardSetPatrolPosPacket::pressed),
+            ByteBufCodecs.INT, GuardSetPatrolPosPacket::entityId,
+            ByteBufCodecs.BOOL, GuardSetPatrolPosPacket::pressed,
             GuardSetPatrolPosPacket::new
     );
 

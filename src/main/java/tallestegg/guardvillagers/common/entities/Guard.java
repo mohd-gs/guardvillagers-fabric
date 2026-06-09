@@ -83,12 +83,12 @@ import tallestegg.guardvillagers.configuration.GuardConfig;
 import tallestegg.guardvillagers.loot_tables.GuardLootTables;
 import tallestegg.guardvillagers.networking.GuardOpenInventoryPacket;
 
-import javax.annotation.Nullable;
+import org.jetbrains.annotations.Nullable;
 import java.util.*;
 import java.util.function.Predicate;
 
 public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAttackMob, ReputationEventHandler, NeutralMob {
-    private static final AttributeModifier USE_ITEM_SPEED_PENALTY = new AttributeModifier(Identifier.of(GuardVillagers.MODID, "item_slow_down"), -0.25D, AttributeModifier.Operation.ADD_VALUE);
+    private static final AttributeModifier USE_ITEM_SPEED_PENALTY = new AttributeModifier(Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "item_slow_down"), -0.25D, AttributeModifier.Operation.ADD_VALUE);
     private static final EntityDataAccessor<Optional<BlockPos>> GUARD_POS = SynchedEntityData.defineId(Guard.class, EntityDataSerializers.OPTIONAL_BLOCK_POS);
     private static final EntityDataAccessor<Boolean> PATROLLING = SynchedEntityData.defineId(Guard.class, EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<String> GUARD_VARIANT = SynchedEntityData.defineId(Guard.class, EntityDataSerializers.STRING);
@@ -112,7 +112,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
     private EntityReference<LivingEntity> persistentAngerTarget;
     private static final EntityDataAccessor<Long> DATA_ANGER_END_TIME = SynchedEntityData.defineId(Guard.class, EntityDataSerializers.LONG);
     private static final UniformInt PERSISTENT_ANGER_TIME = TimeUtil.rangeOfSeconds(20, 39);
-    private static final AttributeModifier HORSE_SPEED_COMPENSATOR = new AttributeModifier(Identifier.of(GuardVillagers.MODID, "horse_speed_compensator"), 1.5F, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL);
+    private static final AttributeModifier HORSE_SPEED_COMPENSATOR = new AttributeModifier(Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "horse_speed_compensator"), 1.5F, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL);
 
     public Guard(EntityType<? extends Guard> type, Level world) {
         super(type, world);
@@ -629,7 +629,6 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
             ItemStack hand = this.getMainHandItem();
             ItemStack itemstack = this.getProjectile(hand);
             AbstractArrow abstractarrowentity = ProjectileUtil.getMobArrow(this, itemstack, distanceFactor, hand);
-            abstractarrowentity = ((BowItem) this.getMainHandItem().getItem()).customArrow(abstractarrowentity, itemstack, hand);
             double d0 = target.getX() - this.getX();
             double d1 = target.getY(0.3333333333333333D) - abstractarrowentity.getY();
             double d2 = target.getZ() - this.getZ();
@@ -643,7 +642,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
     @Override
     public void performCrossbowAttack(LivingEntity p_32337_, float p_32338_) {
-        InteractionHand interactionhand = ProjectileUtil.getWeaponHoldingHand(p_32337_, item -> item instanceof CrossbowItem);
+        InteractionHand interactionhand = ProjectileUtil.getWeaponHoldingHand(p_32337_, Items.CROSSBOW);
         ItemStack itemstack = p_32337_.getItemInHand(interactionhand);
         if (itemstack.getItem() instanceof CrossbowItem crossbowitem) {
             crossbowitem.performShooting(p_32337_.level(), p_32337_, interactionhand, itemstack, p_32338_, 0.0F, null);
@@ -774,7 +773,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
     }
 
     @Override
-    protected void hurtArmor(DamageSource damageSource, float damage) {
+    public void hurtArmor(DamageSource damageSource, float damage) {
         if (this.random.nextFloat() < GuardConfig.COMMON.chanceToBreakEquipment)
             this.doHurtEquipment(damageSource, damage, EquipmentSlot.FEET, EquipmentSlot.LEGS, EquipmentSlot.CHEST, EquipmentSlot.HEAD);
     }
@@ -889,7 +888,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
     }
 
     public static ResourceKey<LootTable> getLootTableFromData() {
-        Identifier lootTable = Identifier.of(GuardVillagers.MODID, "entities/guard_armor");
+        Identifier lootTable = Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "entities/guard_armor");
         return ResourceKey.create(Registries.LOOT_TABLE, lootTable);
     }
 
@@ -1093,12 +1092,21 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         }
     }
 
-    public static class GuardBowAttack extends RangedBowAttackGoal<Guard> {
-        protected Guard guard;
+    public static class GuardBowAttack extends Goal {
+        protected final Guard guard;
+        private final double speedModifier;
+        private final int attackIntervalMin;
+        private final float attackRadiusSqr;
+        private int attackInterval;
+        private float attackRadius;
 
         public GuardBowAttack(Guard mob, double speedModifier, int attackIntervalMin, float attackRadius) {
-            super(mob, speedModifier, attackIntervalMin, attackRadius);
             this.guard = mob;
+            this.speedModifier = speedModifier;
+            this.attackIntervalMin = attackIntervalMin;
+            this.attackRadius = attackRadius;
+            this.attackRadiusSqr = attackRadius * attackRadius;
+            this.setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK));
         }
 
         @Override
@@ -1111,13 +1119,65 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         }
 
         @Override
+        public boolean canContinueToUse() {
+            return (this.canUse()) && this.isBowInMainhand() && guard.getTarget() != null && guard.getTarget().isAlive();
+        }
+
+        @Override
+        public void start() {
+            super.start();
+            this.guard.setAggressive(true);
+        }
+
+        @Override
+        public void stop() {
+            super.stop();
+            this.guard.stopUsingItem();
+            this.guard.setAggressive(false);
+        }
+
+        @Override
+        public boolean requiresUpdateEveryTick() {
+            return true;
+        }
+
+        @Override
         public void tick() {
-            super.tick();
-            LivingEntity attacker = guard.getTarget();
-            if (attacker != null && attacker.isAlive()) {
-                this.guard.getLookControl().setLookAt(attacker);
-                this.guard.lookAt(attacker, 30.0F, 30.0F);
+            LivingEntity target = guard.getTarget();
+            if (target != null) {
+                double distanceSq = guard.distanceToSqr(target);
+                boolean canSee = guard.getSensing().hasLineOfSight(target);
+                boolean isUsing = guard.isUsingItem();
+
+                if (canSee && isUsing) {
+                    if (distanceSq <= (double) this.attackRadiusSqr && this.attackInterval > 0) {
+                        --this.attackInterval;
+                    }
+                } else if (canSee && !isUsing && distanceSq <= (double) this.attackRadiusSqr) {
+                    guard.startUsingItem(ProjectileUtil.getWeaponHoldingHand(guard, Items.BOW));
+                }
+
+                if (distanceSq > (double) this.attackRadiusSqr) {
+                    guard.getNavigation().moveTo(target, this.speedModifier);
+                } else {
+                    guard.getNavigation().stop();
+                }
+
+                guard.getLookControl().setLookAt(target, 30.0F, 30.0F);
+                guard.lookAt(target, 30.0F, 30.0F);
+
+                if (guard.isUsingItem()) {
+                    int useTicks = guard.getTicksUsingItem();
+                    if (useTicks >= 20) {
+                        guard.stopUsingItem();
+                        guard.performRangedAttack(target, BowItem.getPowerForTime(useTicks));
+                        this.attackInterval = this.attackIntervalMin;
+                    }
+                } else if (this.attackInterval > 0) {
+                    --this.attackInterval;
+                }
             }
+
             if (guard.isPatrolling()) {
                 guard.getNavigation().stop();
                 guard.getMoveControl().strafe(0.0F, 0.0F);
@@ -1125,17 +1185,6 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
             if (RangedCrossbowAttackPassiveGoal.friendlyInLineOfSight(guard)) {
                 this.guard.stopUsingItem();
             }
-        }
-
-        @Override
-        public boolean canContinueToUse() {
-            return (this.canUse()) && this.isBowInMainhand() && guard.getTarget() != null && guard.getTarget().isAlive();
-        }
-
-        @Override
-        public void stop() {
-            super.stop();
-            this.guard.stopUsingItem();
         }
     }
 
@@ -1494,7 +1543,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
                     this.crossbowState = CrossbowState.UNCHARGED;
                 } else if (this.crossbowState == CrossbowState.UNCHARGED) {
                     if (!canSee2 && !this.mob.isPatrolling() || this.mob.isPatrolling() && canSee && !friendlyInLineOfSight(this.mob)) {
-                        this.mob.startUsingItem(ProjectileUtil.getWeaponHoldingHand(this.mob, item -> item instanceof CrossbowItem));
+                        this.mob.startUsingItem(ProjectileUtil.getWeaponHoldingHand(this.mob, Items.CROSSBOW));
                         this.crossbowState = CrossbowState.CHARGING;
                         this.mob.setChargingCrossbow(true);
                     }
