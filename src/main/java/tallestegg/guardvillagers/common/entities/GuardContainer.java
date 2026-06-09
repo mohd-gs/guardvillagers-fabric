@@ -13,10 +13,14 @@ import net.minecraft.resources.Identifier;
 import tallestegg.guardvillagers.GuardVillagers;
 
 public class GuardContainer extends AbstractContainerMenu {
+    // 26.1.x note: InventoryMenu.EMPTY_ARMOR_SLOT_* constants may be moved to a Sprite class
+    // or renamed. If compilation fails, check the new location in the vanilla code.
     private final Container guardInventory;
     private final Guard guard;
 
     public GuardContainer(int id, Inventory playerInventory, Container guardInventory, final Guard guard) {
+        // 26.1.x note: passing null as MenuType works but may cause issues with some
+        // networking/validation. Consider registering a proper MenuType in a future update.
         super(null, id);
         this.guardInventory = guardInventory;
         this.guard = guard;
@@ -234,6 +238,8 @@ public class GuardContainer extends AbstractContainerMenu {
         return itemstack;
     }
 
+    // 26.1.x note: Container.stopOpen() signature may change. If compilation fails,
+    // check if the Container interface was updated in this MC version.
     @Override
     public void removed(Player playerIn) {
         super.removed(playerIn);

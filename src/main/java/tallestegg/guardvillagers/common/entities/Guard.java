@@ -129,6 +129,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         return new GuardGroundPathNavigation(this, level);
     }
 
+    // 26.1.x: VillagerType.byBiome() returns ResourceKey<VillagerType> - uses identifier() for the variant name
     public static String getVariantFromBiome(LevelAccessor world, BlockPos pos) {
         ResourceKey<VillagerType> type = VillagerType.byBiome(world.getBiome(pos));
         return GuardVillagers.removeModIdFromVillagerType(type.identifier().toString());
@@ -431,6 +432,14 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         }
 
         super.die(source);
+        // Close any open guard inventory screens for players viewing this guard
+        if (this.interacting && this.level() instanceof ServerLevel serverLevel) {
+            for (ServerPlayer player : serverLevel.players()) {
+                if (player.containerMenu instanceof GuardContainer gc && gc.guard == this) {
+                    player.closeContainer();
+                }
+            }
+        }
         net.minecraft.network.chat.Component deathMessage = this.getCombatTracker().getDeathMessage();
         if (this.dead)
             if (this.level() instanceof ServerLevel serverLevel
@@ -666,7 +675,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         if (shootable.getItem() instanceof ProjectileWeaponItem) {
             Predicate<ItemStack> predicate = ((ProjectileWeaponItem) shootable.getItem()).getSupportedHeldProjectiles();
             ItemStack itemstack = ProjectileWeaponItem.getHeldProjectile(this, predicate);
-            return itemstack.isEmpty() ? new ItemStack(Items.ARROW) : itemstack;
+            return itemstack.isEmpty() ? Items.ARROW.getDefaultInstance() : itemstack;
         } else {
             return ItemStack.EMPTY;
         }
@@ -729,7 +738,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
     @Override
     public void setTarget(LivingEntity entity) {
-        if (entity != null && entity.isAlive() && (((this.getTeam() != null && entity.getTeam() != null && this.getTeam().isAlliedTo(entity.getTeam()))) || GuardConfig.COMMON.MobBlackList.contains(EntityType.getKey(entity.getType()).toString()) || entity.hasEffect(MobEffects.HERO_OF_THE_VILLAGE) || this.isOwner(entity) || (entity instanceof TamableAnimal tamed && (tamed.getOwner() != null && tamed.getOwner().getUUID().equals(this.getOwnerId())))))
+        if (entity != null && entity.isAlive() && (((this.getTeam() != null && entity.getTeam() != null && this.getTeam().isAlliedTo(entity.getTeam()))) || GuardConfig.COMMON.MobBlackList.contains(BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString()) || entity.hasEffect(MobEffects.HERO_OF_THE_VILLAGE) || this.isOwner(entity) || (entity instanceof TamableAnimal tamed && (tamed.getOwner() != null && tamed.getOwner().getUUID().equals(this.getOwnerId())))))
             return;
         super.setTarget(entity);
     }
@@ -770,6 +779,8 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
     public void onReputationEventFrom(ReputationEventType reputationEventType, Entity entity) {
     }
 
+    // 26.1.x note: hurtArmor() may be removed in favor of doHurtEquipment() only.
+    // If this override fails to compile, remove it and rely on the default doHurtEquipment() behavior.
     @Override
     public void hurtArmor(DamageSource damageSource, float damage) {
         if (this.random.nextFloat() < GuardConfig.COMMON.chanceToBreakEquipment)

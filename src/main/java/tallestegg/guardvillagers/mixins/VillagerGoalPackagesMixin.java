@@ -25,6 +25,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Mixin(VillagerGoalPackages.class)
+// 26.1.x note: If VillagerGoalPackages is restructured, the method names getCorePackage,
+// getMeetPackage, and getIdlePackage may change. Verify these targets compile correctly.
 public class VillagerGoalPackagesMixin {
     @Inject(method = "getCorePackage", cancellable = true, at = @At("RETURN"))
     private static void getCorePackage(Holder<VillagerProfession> pProfession, float pSpeedModifier, CallbackInfoReturnable<ImmutableList<Pair<Integer, ? extends BehaviorControl<? super Villager>>>> cir) {

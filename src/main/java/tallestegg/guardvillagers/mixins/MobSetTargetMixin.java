@@ -16,7 +16,8 @@ public abstract class MobSetTargetMixin {
     @Inject(method = "setTarget", at = @At("HEAD"))
     private void guardvillagers$onSetTarget(@Nullable LivingEntity target, CallbackInfo ci) {
         Mob mob = (Mob) (Object) this;
-        if (!mob.level().isClientSide()) {
+        // Ensure we only run on the server side and the mob is actually added to the world
+        if (!mob.level().isClientSide() && mob.level().getEntity(mob.getUUID()) != null) {
             HandlerEvents.onMobSetTarget(mob, target);
         }
     }

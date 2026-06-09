@@ -3,6 +3,8 @@ package tallestegg.guardvillagers.mixins;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.target.DefendVillageTargetGoal;
+// Note: In some 26.1.x builds, DefendVillageTargetGoal may be renamed to DefendVillageGoal
+// If compilation fails, try changing the import and @Mixin target to DefendVillageGoal
 import net.minecraft.world.entity.ai.targeting.TargetingConditions;
 import net.minecraft.world.entity.animal.golem.IronGolem;
 import net.minecraft.world.entity.npc.villager.Villager;

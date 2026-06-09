@@ -53,6 +53,9 @@ public class GuardVillagers implements ModInitializer {
         GuardDataAttachments.registerCleanup();
 
         UseEntityCallback.EVENT.register(HandlerEvents::onEntityInteract);
+        // 26.1.x note: Fabric added BlockEvents#USE_ITEM_ON, ItemEvents#USE_ON, ItemEvents#USE
+        // as more granular alternatives. UseBlockCallback remains supported but consider
+        // migrating to the new events for better vanilla parity in a future update.
         UseBlockCallback.EVENT.register(HandlerEvents::onBlockInteract);
         ServerEntityEvents.ENTITY_LOAD.register(HandlerEvents::onEntityLoad);
     }

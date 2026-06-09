@@ -21,7 +21,6 @@ import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.ai.goal.AvoidEntityGoal;
 import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
-import net.minecraft.world.entity.ai.goal.target.NearestAttackableWitchTargetGoal;
 import net.minecraft.world.entity.ai.gossip.GossipType;
 import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.animal.feline.Cat;
@@ -131,6 +130,7 @@ public class HandlerEvents {
 
             if (mob instanceof IronGolem golem) {
                 HurtByTargetGoal tolerateFriendlyFire = new HurtByTargetGoal(golem, Guard.class).setAlertOthers();
+                // 26.1.x note: getAvailableGoals() may be renamed to getGoals() or getWrappedGoals()
                 golem.targetSelector.getAvailableGoals().stream().map(it -> it.getGoal()).filter(it -> it instanceof HurtByTargetGoal).findFirst().ifPresent(angerGoal -> {
                     golem.targetSelector.removeGoal(angerGoal);
                     golem.targetSelector.addGoal(2, tolerateFriendlyFire);
@@ -151,9 +151,11 @@ public class HandlerEvents {
 
             if (mob instanceof Witch witch) {
                 if (GuardConfig.COMMON.WitchesVillager) {
-                    witch.targetSelector.addGoal(3, new NearestAttackableWitchTargetGoal<>(witch, AbstractVillager.class, 10, true, false, (serverLevel, target) -> ISNT_BABY.test(serverLevel)));
-                    witch.targetSelector.addGoal(3, new NearestAttackableWitchTargetGoal<>(witch, IronGolem.class, 10, true, false, null));
-                    witch.targetSelector.addGoal(2, new NearestAttackableWitchTargetGoal<>(witch, Guard.class, 10, true, false, null));
+                    // Using NearestAttackableTargetGoal as a safe replacement for NearestAttackableWitchTargetGoal
+                    // which may not exist in all 26.1.x versions
+                    witch.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(witch, AbstractVillager.class, 10, true, false, (serverLevel, target) -> ISNT_BABY.test(target)));
+                    witch.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(witch, IronGolem.class, 10, true, false, null));
+                    witch.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(witch, Guard.class, 10, true, false, null));
                 }
             }
 
@@ -207,7 +209,7 @@ public class HandlerEvents {
                             }
                         }
                     }
-                    return InteractionResult.SUCCESS_SERVER;
+                    return InteractionResult.sidedSuccess(level.isClientSide());
                 }
             }
         }
