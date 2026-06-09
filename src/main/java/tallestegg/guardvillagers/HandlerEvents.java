@@ -72,7 +72,7 @@ public class HandlerEvents {
         }
         if (newTarget == null || mob.getType() == GuardEntityType.GUARD || mob instanceof IronGolem) return;
 
-        boolean isVillager = GuardConfig.COMMON.mobsGuardsProtectTargeted.contains(newTarget.getEncodeId());
+        boolean isVillager = GuardConfig.COMMON.mobsGuardsProtectTargeted.contains(GuardVillagers.getEntityTypeId(newTarget));
         if (isVillager) {
             List<Mob> list = mob.level().getEntitiesOfClass(
                     Mob.class,
@@ -107,7 +107,7 @@ public class HandlerEvents {
             }
 
             if (GuardConfig.COMMON.MobsAttackGuards) {
-                if (mob instanceof Enemy && !GuardConfig.COMMON.MobBlackList.contains(mob.getEncodeId())) {
+                if (mob instanceof Enemy && !GuardConfig.COMMON.MobBlackList.contains(GuardVillagers.getEntityTypeId(mob))) {
                     if (!(mob instanceof Spider))
                         mob.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(mob, Guard.class, false));
                     else

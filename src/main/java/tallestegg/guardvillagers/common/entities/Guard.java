@@ -612,7 +612,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         this.targetSelector.addGoal(3, new HeroHurtTargetGoal(this));
         this.targetSelector.addGoal(5, new DefendVillageGuardGoal(this));
         if (GuardConfig.COMMON.AttackAllMobs) {
-            this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, Mob.class, 5, true, true, (target, serverLevel) -> target instanceof Enemy && !GuardConfig.COMMON.MobBlackList.contains(target.getEncodeId())));
+            this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, Mob.class, 5, true, true, (target, serverLevel) -> target instanceof Enemy && !GuardConfig.COMMON.MobBlackList.contains(GuardVillagers.getEntityTypeId(target))));
         } else {
             this.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, Ravager.class, true));
             this.targetSelector.addGoal(4, new NearestAttackableTargetGoal<>(this, Witch.class, true));
@@ -620,7 +620,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
             this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, Zombie.class, true, (target, serverLevel) -> !(target instanceof ZombifiedPiglin)));
         }
         this.targetSelector.addGoal(4, new NearestAttackableTargetGoal<>(this, Player.class, 10, true, false, this::isAngryAt));
-        this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, LivingEntity.class, 5, true, true, (target, serverLevel) -> GuardConfig.COMMON.MobWhiteList.contains(target.getEncodeId())));
+        this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, LivingEntity.class, 5, true, true, (target, serverLevel) -> GuardConfig.COMMON.MobWhiteList.contains(GuardVillagers.getEntityTypeId(target))));
         this.targetSelector.addGoal(8, new ResetUniversalAngerTargetGoal<>(this, true));
     }
 
@@ -696,7 +696,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
     @Override
     public boolean canAttack(LivingEntity target) {
-        return (!GuardConfig.COMMON.MobBlackList.contains(target.getEncodeId()) && !target.hasEffect(MobEffects.HERO_OF_THE_VILLAGE) && !this.isOwner(target) && super.canAttack(target));
+        return (!GuardConfig.COMMON.MobBlackList.contains(GuardVillagers.getEntityTypeId(target)) && !target.hasEffect(MobEffects.HERO_OF_THE_VILLAGE) && !this.isOwner(target) && super.canAttack(target));
     }
 
     @Override
@@ -756,7 +756,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         if (this.isKicking()) {
             this.setKicking(false);
         }
-        super.blockedByItem(this);
+        super.blockedByItem(entityIn);
     }
 
     @Override

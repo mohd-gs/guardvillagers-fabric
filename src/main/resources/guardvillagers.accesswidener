@@ -4,9 +4,6 @@ accessWidener v2 official
 accessible field net/minecraft/world/entity/Mob goalSelector Lnet/minecraft/world/entity/ai/goal/GoalSelector;
 accessible field net/minecraft/world/entity/Mob targetSelector Lnet/minecraft/world/entity/ai/goal/GoalSelector;
 
-# Entity - getEncodeId is protected
-accessible method net/minecraft/world/entity/Entity getEncodeId ()Ljava/lang/String;
-
 # Gui.HeartType is package-private
 accessible class net/minecraft/client/gui/Gui$HeartType
 

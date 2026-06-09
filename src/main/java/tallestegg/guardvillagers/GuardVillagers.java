@@ -11,6 +11,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.CreativeModeTab;
@@ -75,5 +76,13 @@ public class GuardVillagers implements ModInitializer {
             return parts[0];
         else
             return parts[1];
+    }
+
+    /**
+     * Public API replacement for Entity.getEncodeId() which is protected in MC 26.1.x.
+     * Returns the entity type ID string (e.g. "minecraft:zombie").
+     */
+    public static String getEntityTypeId(Entity entity) {
+        return BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString();
     }
 }
