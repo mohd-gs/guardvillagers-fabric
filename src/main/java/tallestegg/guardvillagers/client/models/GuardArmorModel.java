@@ -4,8 +4,6 @@ import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.model.geom.PartPose;
 import net.minecraft.client.model.geom.builders.*;
-import net.minecraft.client.model.object.armorstand.ArmorStandArmorModel;
-import net.minecraft.client.model.player.PlayerModel;
 import net.minecraft.client.renderer.entity.ArmorModelSet;
 import tallestegg.guardvillagers.client.renderer.state.GuardRenderState;
 
@@ -31,5 +29,4 @@ public class GuardArmorModel extends HumanoidModel<GuardRenderState> {
         );
         return meshdefinition;
     }
-
 }

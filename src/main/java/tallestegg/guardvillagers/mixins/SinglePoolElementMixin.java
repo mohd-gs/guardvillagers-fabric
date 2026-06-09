@@ -1,9 +1,7 @@
 package tallestegg.guardvillagers.mixins;
 
 import com.mojang.datafixers.util.Either;
-import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
-import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.EntitySpawnReason;
@@ -25,7 +23,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import tallestegg.guardvillagers.GuardEntityType;
 import tallestegg.guardvillagers.common.entities.Guard;
 import tallestegg.guardvillagers.configuration.GuardConfig;
-import net.minecraft.world.entity.EntitySpawnReason;
 
 @Mixin(SinglePoolElement.class)
 public abstract class SinglePoolElementMixin {
@@ -36,12 +33,14 @@ public abstract class SinglePoolElementMixin {
     @Inject(at = @At(value = "RETURN"), method = "place", cancellable = true)
     public void place(StructureTemplateManager structureTemplateManager, WorldGenLevel level, StructureManager structureManager, ChunkGenerator generator, BlockPos offset, BlockPos pos, Rotation rotation, BoundingBox box, RandomSource random, LiquidSettings liquidSettings, boolean keepJigsaws, CallbackInfoReturnable<Boolean> cir) {
         this.template.left().ifPresent(identifier -> {
-            if (GuardConfig.COMMON.structuresThatSpawnGuards.get().contains(identifier.toString())) {
-                for (int guardCount = 0; guardCount < GuardConfig.COMMON.guardSpawnInVillage.getAsInt(); guardCount++) {
-                    Guard guard = GuardEntityType.GUARD.get().create(level.getLevel(), EntitySpawnReason.EVENT);
-                    guard.snapTo(offset, 0, 0);
-                    guard.finalizeSpawn(level, level.getCurrentDifficultyAt(offset), EntitySpawnReason.STRUCTURE, null);
-                    level.addFreshEntityWithPassengers(guard);
+            if (GuardConfig.COMMON.structuresThatSpawnGuards.contains(identifier.toString())) {
+                for (int guardCount = 0; guardCount < GuardConfig.COMMON.guardSpawnInVillage; guardCount++) {
+                    Guard guard = GuardEntityType.GUARD.create(level.getLevel(), EntitySpawnReason.EVENT);
+                    if (guard != null) {
+                        guard.snapTo(offset, 0, 0);
+                        guard.finalizeSpawn(level, level.getCurrentDifficultyAt(offset), EntitySpawnReason.STRUCTURE, null);
+                        level.addFreshEntityWithPassengers(guard);
+                    }
                 }
             }
         });

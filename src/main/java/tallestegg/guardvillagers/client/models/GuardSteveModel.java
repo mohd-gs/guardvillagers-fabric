@@ -78,9 +78,9 @@ public class GuardSteveModel extends HumanoidModel<GuardRenderState> {
             this.rightArm.xRot = -1.8F;
         }
     }
+
     private void syncHatToHead() {
         this.hat.visible = this.head.visible;
-
         try {
             if (this.head.getChild("hat") != this.hat) {
                 copyPart(this.hat, this.head);
@@ -94,15 +94,12 @@ public class GuardSteveModel extends HumanoidModel<GuardRenderState> {
         dst.x = src.x;
         dst.y = src.y;
         dst.z = src.z;
-
         dst.xRot = src.xRot;
         dst.yRot = src.yRot;
         dst.zRot = src.zRot;
-
         dst.xScale = src.xScale;
         dst.yScale = src.yScale;
         dst.zScale = src.zScale;
-
         dst.visible = src.visible;
         dst.skipDraw = src.skipDraw;
     }

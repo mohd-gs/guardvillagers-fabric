@@ -1,34 +1,96 @@
 package tallestegg.guardvillagers;
 
-import com.mojang.serialization.Codec;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.world.entity.ai.memory.MemoryModuleType;
-import net.neoforged.neoforge.attachment.AttachmentType;
-import net.neoforged.neoforge.registries.DeferredHolder;
-import net.neoforged.neoforge.registries.DeferredRegister;
-import net.neoforged.neoforge.registries.NeoForgeRegistries;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
-import java.util.Optional;
-import java.util.function.Supplier;
-
+/**
+ * Replaces NeoForge AttachmentType system for storing data on Villager entities.
+ * Uses a static Map keyed by entity UUID. Data is periodically cleaned up
+ * when entities are removed.
+ */
 public class GuardDataAttachments {
-    public static final DeferredRegister<AttachmentType<?>> ATTACHMENT_TYPES = DeferredRegister.create(NeoForgeRegistries.ATTACHMENT_TYPES, GuardVillagers.MODID);
-    public static final Supplier<AttachmentType<Integer>> TIMES_THROWN_POTION = ATTACHMENT_TYPES.register(
-            "times_thrown_potion",() -> AttachmentType.builder(() -> 0).build()
-    );
-    public static final Supplier<AttachmentType<Integer>> TIMES_HEALED_GOLEM = ATTACHMENT_TYPES.register(
-            "times_repaired_golem",() -> AttachmentType.builder(() -> 0).build()
-    );
-    public static final Supplier<AttachmentType<Integer>> TIMES_REPAIRED_GUARD = ATTACHMENT_TYPES.register(
-            "times_repaired_guard",() -> AttachmentType.builder(() -> 0).build()
-    );
-    public static final Supplier<AttachmentType<Long>> LAST_REPAIRED_GOLEM = ATTACHMENT_TYPES.register(
-            "last_repaired_golem",() -> AttachmentType.builder(() -> 0L).build()
-    );
-    public static final Supplier<AttachmentType<Long>> LAST_THROWN_POTION = ATTACHMENT_TYPES.register(
-            "last_thrown_potion",() -> AttachmentType.builder(() -> 0L).build()
-    );
-    public static final Supplier<AttachmentType<Long>> LAST_REPAIRED_GUARD = ATTACHMENT_TYPES.register(
-            "last_repaired_guard",() -> AttachmentType.builder(() -> 0L).build()
-    );
+    // Per-villager data stored by entity UUID
+    private static final Map<UUID, Integer> TIMES_THROWN_POTION = new ConcurrentHashMap<>();
+    private static final Map<UUID, Integer> TIMES_HEALED_GOLEM = new ConcurrentHashMap<>();
+    private static final Map<UUID, Integer> TIMES_REPAIRED_GUARD = new ConcurrentHashMap<>();
+    private static final Map<UUID, Long> LAST_REPAIRED_GOLEM = new ConcurrentHashMap<>();
+    private static final Map<UUID, Long> LAST_THROWN_POTION = new ConcurrentHashMap<>();
+    private static final Map<UUID, Long> LAST_REPAIRED_GUARD = new ConcurrentHashMap<>();
+
+    // Times thrown potion
+    public static int getTimesThrownPotion(UUID uuid) {
+        return TIMES_THROWN_POTION.getOrDefault(uuid, 0);
+    }
+
+    public static void setTimesThrownPotion(UUID uuid, int value) {
+        TIMES_THROWN_POTION.put(uuid, value);
+    }
+
+    public static void incrementTimesThrownPotion(UUID uuid) {
+        TIMES_THROWN_POTION.merge(uuid, 1, Integer::sum);
+    }
+
+    // Times healed golem
+    public static int getTimesHealedGolem(UUID uuid) {
+        return TIMES_HEALED_GOLEM.getOrDefault(uuid, 0);
+    }
+
+    public static void setTimesHealedGolem(UUID uuid, int value) {
+        TIMES_HEALED_GOLEM.put(uuid, value);
+    }
+
+    public static void incrementTimesHealedGolem(UUID uuid) {
+        TIMES_HEALED_GOLEM.merge(uuid, 1, Integer::sum);
+    }
+
+    // Times repaired guard
+    public static int getTimesRepairedGuard(UUID uuid) {
+        return TIMES_REPAIRED_GUARD.getOrDefault(uuid, 0);
+    }
+
+    public static void setTimesRepairedGuard(UUID uuid, int value) {
+        TIMES_REPAIRED_GUARD.put(uuid, value);
+    }
+
+    public static void incrementTimesRepairedGuard(UUID uuid) {
+        TIMES_REPAIRED_GUARD.merge(uuid, 1, Integer::sum);
+    }
+
+    // Last repaired golem
+    public static long getLastRepairedGolem(UUID uuid) {
+        return LAST_REPAIRED_GOLEM.getOrDefault(uuid, 0L);
+    }
+
+    public static void setLastRepairedGolem(UUID uuid, long value) {
+        LAST_REPAIRED_GOLEM.put(uuid, value);
+    }
+
+    // Last thrown potion
+    public static long getLastThrownPotion(UUID uuid) {
+        return LAST_THROWN_POTION.getOrDefault(uuid, 0L);
+    }
+
+    public static void setLastThrownPotion(UUID uuid, long value) {
+        LAST_THROWN_POTION.put(uuid, value);
+    }
+
+    // Last repaired guard
+    public static long getLastRepairedGuard(UUID uuid) {
+        return LAST_REPAIRED_GUARD.getOrDefault(uuid, 0L);
+    }
+
+    public static void setLastRepairedGuard(UUID uuid, long value) {
+        LAST_REPAIRED_GUARD.put(uuid, value);
+    }
+
+    // Cleanup when entity is removed
+    public static void removeEntity(UUID uuid) {
+        TIMES_THROWN_POTION.remove(uuid);
+        TIMES_HEALED_GOLEM.remove(uuid);
+        TIMES_REPAIRED_GUARD.remove(uuid);
+        LAST_REPAIRED_GOLEM.remove(uuid);
+        LAST_THROWN_POTION.remove(uuid);
+        LAST_REPAIRED_GUARD.remove(uuid);
+    }
 }

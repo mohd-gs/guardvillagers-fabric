@@ -1,28 +1,18 @@
 package tallestegg.guardvillagers.networking;
 
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.Mod;
-import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
-import net.neoforged.neoforge.network.registration.PayloadRegistrar;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import tallestegg.guardvillagers.GuardVillagers;
-import tallestegg.guardvillagers.networking.handler.FollowingPayloadHandler;
-import net.neoforged.fml.common.EventBusSubscriber;
 
-@EventBusSubscriber(modid = GuardVillagers.MODID)
 public final class GuardNetworking {
     private GuardNetworking() {}
 
-    @SubscribeEvent
-    public static void registerPayloads(final RegisterPayloadHandlersEvent event) {
-        final PayloadRegistrar registrar = event.registrar("1");
+    public static void registerServerReceivers() {
+        PayloadTypeRegistry.playS2C().register(GuardOpenInventoryPacket.ID, GuardOpenInventoryPacket.CODEC);
+        PayloadTypeRegistry.playC2S().register(GuardFollowPacket.ID, GuardFollowPacket.CODEC);
+        PayloadTypeRegistry.playC2S().register(GuardSetPatrolPosPacket.ID, GuardSetPatrolPosPacket.CODEC);
 
-        registrar.playToClient(
-                GuardOpenInventoryPacket.TYPE,
-                GuardOpenInventoryPacket.STREAM_CODEC,
-                GuardOpenInventoryPacket::handle
-        );
-
-        registrar.playToServer(GuardFollowPacket.TYPE, GuardFollowPacket.STREAM_CODEC, GuardFollowPacket::handle);
-        registrar.playToServer(GuardSetPatrolPosPacket.TYPE, GuardSetPatrolPosPacket.STREAM_CODEC, GuardSetPatrolPosPacket::handle);
+        ServerPlayNetworking.registerGlobalReceiver(GuardFollowPacket.ID, GuardFollowPacket::handle);
+        ServerPlayNetworking.registerGlobalReceiver(GuardSetPatrolPosPacket.ID, GuardSetPatrolPosPacket::handle);
     }
 }

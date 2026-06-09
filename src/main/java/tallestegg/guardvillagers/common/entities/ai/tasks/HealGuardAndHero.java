@@ -31,7 +31,7 @@ public class HealGuardAndHero extends VillagerHelp {
     private int waitUntilInSightTicks = 0;
 
     public HealGuardAndHero() {
-        super(ImmutableMap.of(MemoryModuleType.NEAREST_LIVING_ENTITIES, MemoryStatus.VALUE_PRESENT), GuardConfig.COMMON.professionsThatHeal.get());
+        super(ImmutableMap.of(MemoryModuleType.NEAREST_LIVING_ENTITIES, MemoryStatus.VALUE_PRESENT), GuardConfig.COMMON.professionsThatHeal);
     }
 
     @Override
@@ -54,20 +54,18 @@ public class HealGuardAndHero extends VillagerHelp {
 
     @Override
     protected long timeToCheck(LivingEntity owner) {
-        return owner.getData(GuardDataAttachments.LAST_THROWN_POTION.get());
+        return GuardDataAttachments.getLastThrownPotion(owner.getUUID());
     }
 
     @Override
     protected boolean canStillUse(ServerLevel level, Villager entity, long gameTime) {
-        return targetToHeal != null && checkIfDayHavePassedFromLastActivity(entity) && entity.getData(GuardDataAttachments.TIMES_THROWN_POTION.get()) < GuardConfig.COMMON.maxClericHeal.get();
+        return targetToHeal != null && checkIfDayHavePassedFromLastActivity(entity) && GuardDataAttachments.getTimesThrownPotion(entity.getUUID()) < GuardConfig.COMMON.maxClericHeal;
     }
-
 
     @Override
     protected void tick(ServerLevel level, Villager owner, long gameTime) {
         super.tick(level, owner, gameTime);
-        if (this.targetToHeal == null)
-            return;
+        if (this.targetToHeal == null) return;
         BehaviorUtils.lookAtEntity(owner, targetToHeal);
         owner.lookAt(this.targetToHeal, 30.0F, 30.0F);
         owner.getLookControl().setLookAt(this.targetToHeal);
@@ -84,9 +82,9 @@ public class HealGuardAndHero extends VillagerHelp {
     protected void stop(ServerLevel level, Villager entity, long gameTime) {
         super.stop(level, entity, gameTime);
         this.waitUntilInSightTicks = 40;
-        if (entity.getData(GuardDataAttachments.TIMES_THROWN_POTION.get()) >= GuardConfig.COMMON.maxClericHeal.get()) {
-            entity.setData(GuardDataAttachments.LAST_THROWN_POTION.get(), level.getOverworldClockTime());
-            entity.setData(GuardDataAttachments.TIMES_THROWN_POTION.get(), 0);
+        if (GuardDataAttachments.getTimesThrownPotion(entity.getUUID()) >= GuardConfig.COMMON.maxClericHeal) {
+            GuardDataAttachments.setLastThrownPotion(entity.getUUID(), level.getOverworldClockTime());
+            GuardDataAttachments.setTimesThrownPotion(entity.getUUID(), 0);
         }
         this.targetToHeal = null;
     }
@@ -97,7 +95,7 @@ public class HealGuardAndHero extends VillagerHelp {
     }
 
     public void throwPotion(ServerLevel level, LivingEntity healer) {
-        healer.setData(GuardDataAttachments.TIMES_THROWN_POTION.get(), healer.getData(GuardDataAttachments.TIMES_THROWN_POTION.get()) + 1);
+        GuardDataAttachments.incrementTimesThrownPotion(healer.getUUID());
         Holder<Potion> potion = targetToHeal.getHealth() > 4.0F ? Potions.REGENERATION : Potions.HEALING;
         ItemStack itemstack = PotionContents.createItemStack(Items.SPLASH_POTION, potion);
         Projectile.spawnProjectileFromRotation(ThrownSplashPotion::new, level, itemstack, healer, -20.0F, PROJECTILE_SHOOT_POWER, 1.0F);

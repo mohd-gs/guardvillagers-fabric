@@ -172,7 +172,6 @@ public class GuardContainer extends AbstractContainerMenu {
                 this.addSlot(new Slot(playerInventory, j1 + (l + 1) * 9, 8 + j1 * 18, 84 + l * 18));
             }
         }
-
         for (int i1 = 0; i1 < 9; ++i1) {
             this.addSlot(new Slot(playerInventory, i1, 8 + i1 * 18, 142));
         }
@@ -217,7 +216,6 @@ public class GuardContainer extends AbstractContainerMenu {
                 } else if (!this.moveItemStackTo(itemstack1, j, j, false)) {
                     return ItemStack.EMPTY;
                 }
-
                 return ItemStack.EMPTY;
             }
 
@@ -227,7 +225,6 @@ public class GuardContainer extends AbstractContainerMenu {
                 slot.setChanged();
             }
         }
-
         return itemstack;
     }
 

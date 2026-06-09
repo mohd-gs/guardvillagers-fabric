@@ -4,7 +4,6 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.monster.spider.Spider;
 
-//The spiders goal was private, so this needed to be done.
 public class AttackEntityDaytimeGoal<T extends LivingEntity> extends NearestAttackableTargetGoal<T> {
     public AttackEntityDaytimeGoal(Spider spider, Class<T> classTarget) {
         super(spider, classTarget, true);

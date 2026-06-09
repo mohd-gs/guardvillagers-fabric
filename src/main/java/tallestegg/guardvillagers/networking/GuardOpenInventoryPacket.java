@@ -1,31 +1,24 @@
 package tallestegg.guardvillagers.networking;
 
-import io.netty.buffer.ByteBuf;
-import net.minecraft.network.codec.ByteBufCodecs;
+import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
-import net.neoforged.neoforge.network.handling.IPayloadContext;
-import tallestegg.guardvillagers.GuardPacketHandler;
 import tallestegg.guardvillagers.GuardVillagers;
 
 public record GuardOpenInventoryPacket(int id, int size, int entityId) implements CustomPacketPayload {
-    public static final Type<GuardOpenInventoryPacket> TYPE =
-            new Type<>(Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "open_inventory"));
+    public static final CustomPacketPayload.Type<GuardOpenInventoryPacket> ID =
+            new CustomPacketPayload.Type<>(Identifier.of(GuardVillagers.MODID, "open_inventory"));
 
-    public static final StreamCodec<ByteBuf, GuardOpenInventoryPacket> STREAM_CODEC = StreamCodec.composite(
-            ByteBufCodecs.INT, GuardOpenInventoryPacket::id,
-            ByteBufCodecs.INT, GuardOpenInventoryPacket::size,
-            ByteBufCodecs.INT, GuardOpenInventoryPacket::entityId,
+    public static final StreamCodec<RegistryFriendlyByteBuf, GuardOpenInventoryPacket> CODEC = StreamCodec.composite(
+            StreamCodec.of(RegistryFriendlyByteBuf::writeInt, RegistryFriendlyByteBuf::readInt, GuardOpenInventoryPacket::id),
+            StreamCodec.of(RegistryFriendlyByteBuf::writeInt, RegistryFriendlyByteBuf::readInt, GuardOpenInventoryPacket::size),
+            StreamCodec.of(RegistryFriendlyByteBuf::writeInt, RegistryFriendlyByteBuf::readInt, GuardOpenInventoryPacket::entityId),
             GuardOpenInventoryPacket::new
     );
 
-    public static void handle(GuardOpenInventoryPacket payload, IPayloadContext context) {
-        context.enqueueWork(() -> GuardPacketHandler.openGuardInventory(payload));
-    }
-
     @Override
     public Type<? extends CustomPacketPayload> type() {
-        return TYPE;
+        return ID;
     }
 }

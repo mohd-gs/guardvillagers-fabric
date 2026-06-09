@@ -33,13 +33,13 @@ public class ArmorSlotFunction extends LootItemConditionalFunction {
     @Override
     protected ItemStack run(ItemStack pStack, LootContext pContext) {
         LivingEntity livingEntity = (LivingEntity) pContext.getOptionalParameter(LootContextParams.THIS_ENTITY);
-        livingEntity.setItemSlot(slot, pStack);
+        if (livingEntity != null) {
+            livingEntity.setItemSlot(slot, pStack);
+        }
         return pStack;
     }
-
 
     public static LootItemConditionalFunction.Builder<?> armorSlotFunction(EquipmentSlot slot) {
         return simpleBuilder(conditions -> new ArmorSlotFunction(conditions, slot));
     }
 }
-

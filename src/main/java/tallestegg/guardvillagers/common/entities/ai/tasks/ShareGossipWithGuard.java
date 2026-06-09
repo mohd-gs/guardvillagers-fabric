@@ -24,7 +24,7 @@ public class ShareGossipWithGuard extends Behavior<Villager> {
 
     @Override
     protected boolean checkExtraStartConditions(ServerLevel pLevel, Villager pOwner) {
-        return BehaviorUtils.targetIsValid(pOwner.getBrain(), MemoryModuleType.INTERACTION_TARGET, GuardEntityType.GUARD.get());
+        return BehaviorUtils.targetIsValid(pOwner.getBrain(), MemoryModuleType.INTERACTION_TARGET, GuardEntityType.GUARD);
     }
 
     @Override
@@ -55,7 +55,6 @@ public class ShareGossipWithGuard extends Behavior<Villager> {
         pEntity.getBrain().eraseMemory(MemoryModuleType.INTERACTION_TARGET);
     }
 
-    // From the TradeWithVillager class
     private static void throwHalfStack(Villager pVillager, Set<Item> pStack, LivingEntity pEntity) {
         SimpleContainer simplecontainer = pVillager.getInventory();
         ItemStack itemstack = ItemStack.EMPTY;

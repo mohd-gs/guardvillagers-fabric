@@ -29,11 +29,11 @@ public class VillagerGoalPackagesMixin {
     @Inject(method = "getCorePackage", cancellable = true, at = @At("RETURN"))
     private static void getCorePackage(Holder<VillagerProfession> pProfession, float pSpeedModifier, CallbackInfoReturnable<ImmutableList<Pair<Integer, ? extends BehaviorControl<? super Villager>>>> cir) {
         List<Pair<Integer, ? extends BehaviorControl<? super Villager>>> villagerList = new ArrayList<>(cir.getReturnValue());
-        if (GuardConfig.COMMON.BlacksmithHealing.get())
+        if (GuardConfig.COMMON.BlacksmithHealing)
             villagerList.add(Pair.of(10, new RepairGolem()));
-        if (GuardConfig.COMMON.ClericHealing.get())
+        if (GuardConfig.COMMON.ClericHealing)
             villagerList.add(Pair.of(10, new HealGuardAndHero()));
-        if (GuardConfig.COMMON.armorersRepairGuardArmor.get())
+        if (GuardConfig.COMMON.armorersRepairGuardArmor)
             villagerList.add(Pair.of(10, new RepairGuardEquipment()));
         cir.setReturnValue(ImmutableList.copyOf(villagerList));
     }
@@ -48,7 +48,7 @@ public class VillagerGoalPackagesMixin {
     @Inject(method = "getIdlePackage", cancellable = true, at = @At("RETURN"))
     private static void getIdlePackage(float pSpeedModifier, CallbackInfoReturnable<ImmutableList<Pair<Integer, ? extends BehaviorControl<? super Villager>>>> cir) {
         List<Pair<Integer, ? extends BehaviorControl<? super Villager>>> villagerList = new ArrayList<>(cir.getReturnValue());
-        villagerList.add(Pair.of(2, new RunOne<>(ImmutableList.of(Pair.of(InteractWith.of(GuardEntityType.GUARD.get(), 8, MemoryModuleType.INTERACTION_TARGET, pSpeedModifier, 2), 3), Pair.of(InteractWith.of(EntityType.VILLAGER, 8, MemoryModuleType.INTERACTION_TARGET, pSpeedModifier, 2), 3), Pair.of(new DoNothing(30, 60), 1)))));
+        villagerList.add(Pair.of(2, new RunOne<>(ImmutableList.of(Pair.of(InteractWith.of(GuardEntityType.GUARD, 8, MemoryModuleType.INTERACTION_TARGET, pSpeedModifier, 2), 3), Pair.of(InteractWith.of(EntityType.VILLAGER, 8, MemoryModuleType.INTERACTION_TARGET, pSpeedModifier, 2), 3), Pair.of(new DoNothing(30, 60), 1)))));
         villagerList.add(Pair.of(2, new GateBehavior<>(ImmutableMap.of(), ImmutableSet.of(MemoryModuleType.INTERACTION_TARGET), GateBehavior.OrderPolicy.ORDERED, GateBehavior.RunningPolicy.RUN_ONE, ImmutableList.of(Pair.of(new ShareGossipWithGuard(), 1), Pair.of(new TradeWithVillager(), 1)))));
         cir.setReturnValue(ImmutableList.copyOf(villagerList));
     }

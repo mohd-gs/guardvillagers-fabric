@@ -1,5 +1,6 @@
 package tallestegg.guardvillagers.client.gui;
 
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.ImageButton;
@@ -13,7 +14,6 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
-import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import tallestegg.guardvillagers.GuardVillagers;
 import tallestegg.guardvillagers.common.entities.Guard;
 import tallestegg.guardvillagers.common.entities.GuardContainer;
@@ -22,11 +22,11 @@ import tallestegg.guardvillagers.networking.GuardFollowPacket;
 import tallestegg.guardvillagers.networking.GuardSetPatrolPosPacket;
 
 public class GuardInventoryScreen extends AbstractContainerScreen<GuardContainer> {
-    private static final Identifier GUARD_GUI_TEXTURES = Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "textures/container/inventory.png");
-    private static final WidgetSprites GUARD_FOLLOWING_ICONS = new WidgetSprites(Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "following/following"), Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "following/following_highlighted"));
-    private static final WidgetSprites GUARD_NOT_FOLLOWING_ICONS = new WidgetSprites(Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "following/not_following"), Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "following/not_following_highlighted"));
-    private static final WidgetSprites GUARD_PATROLLING_ICONS = new WidgetSprites(Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "patrolling/patrolling1"), Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "patrolling/patrolling2"));
-    private static final WidgetSprites GUARD_NOT_PATROLLING_ICONS = new WidgetSprites(Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "patrolling/notpatrolling1"), Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "patrolling/notpatrolling2"));
+    private static final Identifier GUARD_GUI_TEXTURES = Identifier.of(GuardVillagers.MODID, "textures/container/inventory.png");
+    private static final WidgetSprites GUARD_FOLLOWING_ICONS = new WidgetSprites(Identifier.of(GuardVillagers.MODID, "following/following"), Identifier.of(GuardVillagers.MODID, "following/following_highlighted"));
+    private static final WidgetSprites GUARD_NOT_FOLLOWING_ICONS = new WidgetSprites(Identifier.of(GuardVillagers.MODID, "following/not_following"), Identifier.of(GuardVillagers.MODID, "following/not_following_highlighted"));
+    private static final WidgetSprites GUARD_PATROLLING_ICONS = new WidgetSprites(Identifier.of(GuardVillagers.MODID, "patrolling/patrolling1"), Identifier.of(GuardVillagers.MODID, "patrolling/patrolling2"));
+    private static final WidgetSprites GUARD_NOT_PATROLLING_ICONS = new WidgetSprites(Identifier.of(GuardVillagers.MODID, "patrolling/notpatrolling1"), Identifier.of(GuardVillagers.MODID, "patrolling/notpatrolling2"));
     private static final Identifier ARMOR_EMPTY_SPRITE = Identifier.withDefaultNamespace("hud/armor_empty");
     private static final Identifier ARMOR_HALF_SPRITE = Identifier.withDefaultNamespace("hud/armor_half");
     private static final Identifier ARMOR_FULL_SPRITE = Identifier.withDefaultNamespace("hud/armor_full");
@@ -48,14 +48,14 @@ public class GuardInventoryScreen extends AbstractContainerScreen<GuardContainer
     @Override
     public void init() {
         super.init();
-        if (GuardConfig.COMMON.followHero.get() && player.hasEffect(MobEffects.HERO_OF_THE_VILLAGE) || !GuardConfig.COMMON.followHero.get()) {
-            this.addRenderableWidget(new GuardGuiButton(this.leftPos + 100, this.height / 2 - 40, 20, 18, GUARD_FOLLOWING_ICONS, GUARD_NOT_FOLLOWING_ICONS, true, btn -> ClientPacketDistributor.sendToServer(new GuardFollowPacket(guard.getId()))
+        if (GuardConfig.COMMON.followHero && player.hasEffect(MobEffects.HERO_OF_THE_VILLAGE) || !GuardConfig.COMMON.followHero) {
+            this.addRenderableWidget(new GuardGuiButton(this.leftPos + 100, this.height / 2 - 40, 20, 18, GUARD_FOLLOWING_ICONS, GUARD_NOT_FOLLOWING_ICONS, true, btn -> ClientPlayNetworking.send(new GuardFollowPacket(guard.getId()))
             ));
         }
-        if (GuardConfig.COMMON.setGuardPatrolHotv.get() && player.hasEffect(MobEffects.HERO_OF_THE_VILLAGE) || !GuardConfig.COMMON.setGuardPatrolHotv.get()) {
+        if (GuardConfig.COMMON.setGuardPatrolHotv && player.hasEffect(MobEffects.HERO_OF_THE_VILLAGE) || !GuardConfig.COMMON.setGuardPatrolHotv) {
             this.addRenderableWidget(new GuardGuiButton(this.leftPos + 120, this.height / 2 - 40, 20, 18, GUARD_PATROLLING_ICONS, GUARD_NOT_PATROLLING_ICONS, false, btn -> {
                 buttonPressed = !buttonPressed;
-                ClientPacketDistributor.sendToServer(new GuardSetPatrolPosPacket(guard.getId(), buttonPressed));
+                ClientPlayNetworking.send(new GuardSetPatrolPosPacket(guard.getId(), buttonPressed));
             }));
         }
     }
@@ -83,7 +83,7 @@ public class GuardInventoryScreen extends AbstractContainerScreen<GuardContainer
         Component guardHealthText = Component.translatable("guardinventory.health", health);
         Component guardArmorText = Component.translatable("guardinventory.armor", armor);
         int yValueWithOrWithoutArmor = armor <= 0 ? 20 : 30;
-        if (!GuardConfig.CLIENT.guardInventoryNumbers.get() || guard.getMaxHealth() > 20) {
+        if (!GuardConfig.CLIENT.guardInventoryNumbers || guard.getMaxHealth() > 20) {
             graphics.text(font, guardHealthText, 80, 30, -12566464, false);
         } else if (guard.getMaxHealth() <= 20) {
             for (int i = 0; i < (guard.getMaxHealth() * 0.5); i++) {
@@ -99,7 +99,7 @@ public class GuardInventoryScreen extends AbstractContainerScreen<GuardContainer
                 }
             }
         }
-        if (!GuardConfig.CLIENT.guardInventoryNumbers.get()) {
+        if (!GuardConfig.CLIENT.guardInventoryNumbers) {
             graphics.text(font, guardArmorText, 80, 20, 4210752, false);
         } else {
             if (armor > 0) {
@@ -108,11 +108,9 @@ public class GuardInventoryScreen extends AbstractContainerScreen<GuardContainer
                     if (k * 2 + 1 < armor) {
                         graphics.blitSprite(RenderPipelines.GUI_TEXTURED, ARMOR_FULL_SPRITE, l, 20, 9, 9);
                     }
-
                     if (k * 2 + 1 == armor) {
                         graphics.blitSprite(RenderPipelines.GUI_TEXTURED, ARMOR_HALF_SPRITE, l, 20, 9, 9);
                     }
-
                     if (k * 2 + 1 > armor) {
                         graphics.blitSprite(RenderPipelines.GUI_TEXTURED, ARMOR_EMPTY_SPRITE, l, 20, 9, 9);
                     }
@@ -120,6 +118,7 @@ public class GuardInventoryScreen extends AbstractContainerScreen<GuardContainer
             }
         }
     }
+
     private void renderHeart(GuiGraphicsExtractor guiGraphics, Gui.HeartType heartType, int x, int y, boolean halfHeart) {
         guiGraphics.blitSprite(RenderPipelines.GUI_TEXTURED, heartType.getSprite(false, halfHeart, false), x, y, 9, 9);
     }

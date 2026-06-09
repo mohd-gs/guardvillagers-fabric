@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "guardvillagers",
+  "version": "${version}",
+  "name": "Guard Villagers",
+  "description": "Need some help with pest control? The Guards are ready to help!",
+  "authors": [
+    "TallestEgg",
+    "HadeZ/SadNya69 for the textures."
+  ],
+  "contact": {},
+  "license": "MIT for code, assets are ARR",
+  "icon": "guard_villagers.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "tallestegg.guardvillagers.GuardVillagers"
+    ],
+    "client": [
+      "tallestegg.guardvillagers.client.GuardClientEvents"
+    ]
+  },
+  "mixins": [
+    "guardvillagers.mixins"
+  ],
+  "depends": {
+    "fabricloader": ">=0.17.0",
+    "minecraft": "~26.1.0",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}

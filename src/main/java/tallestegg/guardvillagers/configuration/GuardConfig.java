@@ -1,171 +1,278 @@
 package tallestegg.guardvillagers.configuration;
 
-import com.google.common.collect.ImmutableList;
-import net.neoforged.neoforge.common.ModConfigSpec;
-import org.apache.commons.lang3.tuple.Pair;
+import com.google.gson.*;
+import net.fabricmc.loader.api.FabricLoader;
 import tallestegg.guardvillagers.GuardVillagers;
 
+import java.io.*;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
-
 public class GuardConfig {
-    public static final ModConfigSpec COMMON_SPEC;
-    public static final CommonConfig COMMON;
-    public static final ModConfigSpec CLIENT_SPEC;
-    public static final ClientConfig CLIENT;
-    public static final ModConfigSpec STARTUP_SPEC;
-    public static final StartUpConfig STARTUP;
+    public static final CommonConfig COMMON = new CommonConfig();
+    public static final ClientConfig CLIENT = new ClientConfig();
+    public static final StartUpConfig STARTUP = new StartUpConfig();
 
-    static {
-        final Pair<CommonConfig, ModConfigSpec> specPair = new ModConfigSpec.Builder().configure(CommonConfig::new);
-        COMMON = specPair.getLeft();
-        COMMON_SPEC = specPair.getRight();
-        final Pair<ClientConfig, ModConfigSpec> specPair1 = new ModConfigSpec.Builder().configure(ClientConfig::new);
-        CLIENT = specPair1.getLeft();
-        CLIENT_SPEC = specPair1.getRight();
-        final Pair<StartUpConfig, ModConfigSpec> specPair2 = new ModConfigSpec.Builder().configure(StartUpConfig::new);
-        STARTUP = specPair2.getLeft();
-        STARTUP_SPEC = specPair2.getRight();
-    }
+    private static final Path CONFIG_PATH = FabricLoader.getInstance().getConfigDir().resolve("guardvillagers.json");
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
+    public static void load() {
+        File file = CONFIG_PATH.toFile();
+        if (!file.exists()) {
+            save();
+            return;
+        }
+        try (Reader reader = new FileReader(file)) {
+            JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
 
-    public static class CommonConfig {
-        public final ModConfigSpec.BooleanValue RaidAnimals;
-        public final ModConfigSpec.BooleanValue WitchesVillager;
-        public final ModConfigSpec.BooleanValue AttackAllMobs;
-        public final ModConfigSpec.BooleanValue MobsAttackGuards;
-        public final ModConfigSpec.BooleanValue VillagersRunFromPolarBears;
-        public final ModConfigSpec.BooleanValue IllagersRunFromPolarBears;
-        public final ModConfigSpec.BooleanValue GuardsRunFromPolarBears;
-        public final ModConfigSpec.BooleanValue GuardsOpenDoors;
-        public final ModConfigSpec.BooleanValue GuardRaiseShield;
-        public final ModConfigSpec.BooleanValue GuardFormation;
-        public final ModConfigSpec.BooleanValue FriendlyFire;
-        public final ModConfigSpec.BooleanValue ConvertVillagerIfHaveHOTV;
-        public final ModConfigSpec.BooleanValue guardTeleport;
-        public final ModConfigSpec.BooleanValue BlacksmithHealing;
-        public final ModConfigSpec.BooleanValue ClericHealing;
-        public final ModConfigSpec.BooleanValue guardArrowsHurtVillagers;
-        public final ModConfigSpec.BooleanValue armorersRepairGuardArmor;
-        public final ModConfigSpec.BooleanValue giveGuardStuffHOTV;
-        public final ModConfigSpec.BooleanValue setGuardPatrolHotv;
-        public final ModConfigSpec.BooleanValue followHero;
-        public final ModConfigSpec.BooleanValue golemFloat;
-        public final ModConfigSpec.BooleanValue multiFollow;
-        public final ModConfigSpec.BooleanValue guardPatrolVillageAi;
-        public final ModConfigSpec.BooleanValue guardPatrolAroundVillageWorkstations;
-        public final ModConfigSpec.BooleanValue convertGuardOnDeath;
-        public final ModConfigSpec.BooleanValue guardSinkToFightUnderWater;
-        public final ModConfigSpec.ConfigValue<List<? extends String>> MobBlackList;
-        public final ModConfigSpec.ConfigValue<List<? extends String>> MobWhiteList;
-        public final ModConfigSpec.ConfigValue<List<? extends String>> convertibleProfessions;
-        public final ModConfigSpec.ConfigValue<List<? extends String>> professionsThatHeal;
-        public final ModConfigSpec.ConfigValue<List<? extends String>> professionsThatRepairGolems;
-        public final ModConfigSpec.ConfigValue<List<? extends String>> professionsThatRepairGuards;
-        public final ModConfigSpec.ConfigValue<List<? extends String>> structuresThatSpawnGuards;
-        public final ModConfigSpec.ConfigValue<List<? extends String>> mobsGuardsProtectTargeted;
-        public final ModConfigSpec.ConfigValue<List<? extends String>> mobsGuardsProtectHurt;
-        public final ModConfigSpec.IntValue reputationRequirement;
-        public final ModConfigSpec.IntValue reputationRequirementToBeAttacked;
-        public final ModConfigSpec.IntValue guardSpawnInVillage;
-        public final ModConfigSpec.IntValue maxClericHeal;
-        public final ModConfigSpec.IntValue maxGolemRepair;
-        public final ModConfigSpec.IntValue maxVillageRepair;
-        public final ModConfigSpec.DoubleValue chanceToDropEquipment;
-        public final ModConfigSpec.DoubleValue chanceToBreakEquipment;
-        public final ModConfigSpec.DoubleValue guardCrossbowAttackRadius;
-        public final ModConfigSpec.DoubleValue GuardVillagerHelpRange;
-        public final ModConfigSpec.DoubleValue amountOfHealthRegenerated;
-        public final ModConfigSpec.DoubleValue friendlyFireCheckValue;
-        public final ModConfigSpec.IntValue depthGuardHuntUnderwater;
-
-        public CommonConfig(ModConfigSpec.Builder builder) {
-            builder.push("raids and illagers");
-            RaidAnimals = builder.comment("Illagers In Raids Attack Animals?").translation(GuardVillagers.MODID + ".config.RaidAnimals").define("Illagers in raids attack animals?", true);
-            WitchesVillager = builder.comment("Witches Attack Villagers?").translation(GuardVillagers.MODID + ".config.WitchesVillager").define("Witches attack villagers?", true);
-            IllagersRunFromPolarBears = builder.comment("This makes Illagers run from polar bears, as anyone with common sense would.").translation(GuardVillagers.MODID + ".config.IllagersRunFromPolarBears").define("Have Illagers have some common sense?", true);
-            builder.pop();
-            builder.push("mob ai in general");
-            AttackAllMobs = builder.comment("Guards will attack all hostiles with this option, when set to false guards will only attack zombies and illagers.").translation(GuardVillagers.MODID + ".config.AttackAllMobs").define("Guards attack all mobs?", true);
-            MobsAttackGuards = builder.comment("Hostiles attack guards, by default only illagers and zombies will attack guards, the mob blacklist below will effect this option").define("All mobs attack guards", false);
-            MobBlackList = builder.comment("Guards won't attack mobs in this list at all, for example, putting \"minecraft:creeper\" in this list will make guards ignore creepers.").defineListAllowEmpty("Mob Blacklist", ImmutableList.of("minecraft:villager", "minecraft:iron_golem", "minecraft:wandering_trader", "guardvillagers:guard", "minecraft:creeper", "minecraft:enderman"), () -> "", obj -> true);
-            MobWhiteList = builder.comment("Guards will additionally attack mobs ids put in this list, for example, putting \"minecraft:cow\" in this list will make guards attack cows.").defineListAllowEmpty("Mob Whitelist", new ArrayList<>(), () -> "", obj -> true);
-            builder.pop();
-            builder.push("villager stuff");
-            professionsThatHeal = builder.defineListAllowEmpty("Profession Whitelist for healing ai for clerics", ImmutableList.of("minecraft:cleric"), () -> "", obj -> true);
-            professionsThatRepairGolems = builder.defineListAllowEmpty("Profession Whitelist for golem repair ai", ImmutableList.of("minecraft:armorer", "minecraft:weaponsmith"), () -> "", obj -> true);
-            professionsThatRepairGuards = builder.defineListAllowEmpty("Profession Whitelist for guard weaponry repair ai", ImmutableList.of("minecraft:weaponsmith", "minecraft:armorer", "minecraft:toolsmith"), () -> "", obj -> true);
-            maxClericHeal = builder.defineInRange("How many times a cleric can heal a guard in one day", 3, 0, 1000000);
-            maxGolemRepair = builder.defineInRange("How many times a smith villager can heal a golem in one day", 3, 0, 1000000);
-            maxVillageRepair = builder.defineInRange("How many times a villager can heal a guard's equipment in one day", 3, 0, 1000000);
-            armorersRepairGuardArmor = builder.translation(GuardVillagers.MODID + ".config.armorvillager").define("Allow armorers and weaponsmiths repair guard items when down below half durability?", true);
-            ConvertVillagerIfHaveHOTV = builder.comment("This will make it so villagers will only be converted into guards if the player has hero of the village").translation(GuardVillagers.MODID + ".config.hotv")
-                    .define("Make it so players have to have hero of the village to convert villagers into guards?", false);
-            BlacksmithHealing = builder.translation(GuardVillagers.MODID + ".config.blacksmith").define("Have it so blacksmiths heal golems under 60 health?", true);
-            ClericHealing = builder.translation(GuardVillagers.MODID + ".config.cleric").define("Have it so clerics heal guards and players with hero of the village?", true);
-            VillagersRunFromPolarBears = builder.comment("This makes villagers run from polar bears, as anyone with common sense would.").translation(GuardVillagers.MODID + ".config.VillagersRunFromPolarBears").define("Have Villagers have some common sense?", true);
-            convertibleProfessions = builder.comment("Professions that can be converted into guards").defineListAllowEmpty("Profession Whitelist for guard conversion", ImmutableList.of("nitwit", "none"), () -> "", obj -> true);
-            builder.pop();
-            builder.push("golem stuff");
-            golemFloat = builder.define("Allow Iron Golems to float on water?", false);
-            builder.pop();
-            builder.push("guard stuff");
-            guardSinkToFightUnderWater = builder.define("Allow guards to sink temporarily to fight mobs that are under water?", true);
-            depthGuardHuntUnderwater = builder.comment("If a guard is fighting a mob underwater and the vertical distance between that mob and the guard is larger than this, the guard will instead float up to not take the risk of drowning").defineInRange("Depth value for guards fighting underwater mobs",  5, 0, 100000000);
-            mobsGuardsProtectTargeted = builder.defineListAllowEmpty("Mobs that guards actively protect when they get targeted", ImmutableList.of("minecraft:villager", "guardvillagers:guard", "minecraft:iron_golem"), () -> "", obj -> true);
-            mobsGuardsProtectHurt = builder.comment("Mobs in this list also won't get hurt by a guard's arrow if the config option to disable guard arrows hurting villagers is enabled.").defineListAllowEmpty("Mobs that guards actively protect when they get hurt", ImmutableList.of("minecraft:villager", "guardvillagers:guard", "minecraft:iron_golem"), () -> "", obj -> true);
-            guardCrossbowAttackRadius = builder.defineInRange("Guard crossbow attack radius", 8.0F, 0.0F, 100000000.0F);
-            structuresThatSpawnGuards = builder.comment("Guards are placed in the middle, thus more advanced placement should be done via datapacks").defineListAllowEmpty("Structure pieces that spawn guards", ImmutableList.of("minecraft:village/common/iron_golem"), () -> "", obj -> true);
-            guardSpawnInVillage = builder.defineInRange("How many guards should spawn in a village?", 6, 0, 100000000);
-            convertGuardOnDeath = builder.define("Allow guards to convert to zombie villagers upon being killed by zombies?", true);
-            multiFollow = builder.translation(GuardVillagers.MODID + ".config.multifollow").define("Allow the player to right click on bells to mass order guards to follow them?", true);
-            chanceToDropEquipment = builder.defineInRange("Chance to drop equipment", 100.0F, -999.9F, 999.0F);
-            GuardsRunFromPolarBears = builder.comment("This makes Guards run from polar bears, as anyone with common sense would.").translation(GuardVillagers.MODID + ".config.IllagersRunFromPolarBears").define("Have Guards have some common sense?", false);
-            GuardsOpenDoors = builder.comment("This lets Guards open doors.").translation(GuardVillagers.MODID + ".config.GuardsOpenDoors").define("Have Guards open doors?", true);
-            GuardRaiseShield = builder.comment("This will make guards raise their shields all the time, on default they will only raise their shields under certain conditions").translation(GuardVillagers.MODID + ".config.GuardRaiseShield").define("Have Guards raise their shield all the time?",
-                    false);
-            chanceToBreakEquipment = builder.defineInRange("Chance for guards to lose durability", 1.0F, -999.9F, 999.0F);
-            guardTeleport = builder.define("Allow guards to teleport if following the player", true);
-            GuardFormation = builder.comment("This makes guards form a phalanx").translation(GuardVillagers.MODID + ".config.GuardFormation").define("Have guards form a phalanx?", true);
-            friendlyFireCheckValue = builder.comment("Angle is determined by taking the arccos of the inputted value, for example -1 is a straight 180 degree angle thus if that value is inputted guards will only check straight ahead to see if any friendly mobs are in the way.").defineInRange("Angle of how ranged guards determine if a friendly mob is infront of them before firing", -0.9, -1000000, 1000000);
-            FriendlyFire = builder.translation(GuardVillagers.MODID + ".config.FriendlyFire").define("Have guards attempt to avoid firing into other friendlies?", true);
-            GuardVillagerHelpRange = builder.translation(GuardVillagers.MODID + ".config.range").comment("This is the range in which the guards will be aggroed to mobs that are attacking villagers. Higher values are more resource intensive, and setting this to zero will disable the goal.")
-                    .defineInRange("Range", 50.0D, -500.0D, 500.0D);
-            amountOfHealthRegenerated = builder.translation(GuardVillagers.MODID + ".config.amountofHealthRegenerated").comment("How much health a guard regenerates.").defineInRange("Guard health regeneration amount", 1.0D, -500.0D, 500.0D);
-            guardArrowsHurtVillagers = builder.translation(GuardVillagers.MODID + ".config.guardArrows").define("Allow guard arrows to damage villagers, iron golems, or other guards? The i-frames will still be shown for them but they won't lose any health if this is set to false", true);
-            giveGuardStuffHOTV = builder.translation(GuardVillagers.MODID + ".config.hotvArmor").define("Allow players to give guards stuff only if they have the hero of the village effect?", false);
-            setGuardPatrolHotv = builder.translation(GuardVillagers.MODID + ".config.hotvPatrolPoint").define("Allow players to set guard patrol points only if they have hero of the village", false);
-            reputationRequirement = builder.defineInRange("Minimum reputation requirement for guards to give you access to their inventories", 15, Integer.MIN_VALUE, Integer.MAX_VALUE);
-            followHero = builder.define("Have guards only follow the player if they have hero of the village?", true);
-            reputationRequirementToBeAttacked = builder.defineInRange("How low of a reputation of a player should have to be instantly aggroed upon by guards and golems?", -100, -9999, 9999);
-            guardPatrolVillageAi = builder.define("Allow guards to naturally patrol villages? This feature can cause lag if a lot of guards are spawned", false);
-            guardPatrolAroundVillageWorkstations = builder.define("Allow guards to patrol around villager workstations like golems?", true);
-            builder.pop();
+            if (root.has("common")) {
+                COMMON.fromJson(root.getAsJsonObject("common"));
+            }
+            if (root.has("client")) {
+                CLIENT.fromJson(root.getAsJsonObject("client"));
+            }
+            if (root.has("startup")) {
+                STARTUP.fromJson(root.getAsJsonObject("startup"));
+            }
+        } catch (Exception e) {
+            GuardVillagers.LOGGER.error("Failed to load Guard Villagers config", e);
+            save();
         }
     }
 
-    public static class StartUpConfig {
-        public final ModConfigSpec.DoubleValue healthModifier;
-        public final ModConfigSpec.DoubleValue speedModifier;
-        public final ModConfigSpec.DoubleValue followRangeModifier;
+    public static void save() {
+        JsonObject root = new JsonObject();
+        root.add("common", COMMON.toJson());
+        root.add("client", CLIENT.toJson());
+        root.add("startup", STARTUP.toJson());
 
-        public StartUpConfig(ModConfigSpec.Builder builder) {
-            healthModifier = builder.defineInRange("Guard health", 20.0D, -500.0D, 900.0D);
-            speedModifier = builder.defineInRange("Guard speed", 0.5D, -500.0D, 900.0D);
-            followRangeModifier = builder.defineInRange("Guard follow range", 20.0D, 0.0D, 900.0D);
+        try (Writer writer = new FileWriter(CONFIG_PATH.toFile())) {
+            GSON.toJson(root, writer);
+        } catch (IOException e) {
+            GuardVillagers.LOGGER.error("Failed to save Guard Villagers config", e);
+        }
+    }
+
+    public static class CommonConfig {
+        // Raids and illagers
+        public boolean RaidAnimals = true;
+        public boolean WitchesVillager = true;
+        public boolean IllagersRunFromPolarBears = true;
+
+        // Mob AI in general
+        public boolean AttackAllMobs = true;
+        public boolean MobsAttackGuards = false;
+        public List<String> MobBlackList = new ArrayList<>(List.of("minecraft:villager", "minecraft:iron_golem", "minecraft:wandering_trader", "guardvillagers:guard", "minecraft:creeper", "minecraft:enderman"));
+        public List<String> MobWhiteList = new ArrayList<>();
+
+        // Villager stuff
+        public List<String> professionsThatHeal = new ArrayList<>(List.of("minecraft:cleric"));
+        public List<String> professionsThatRepairGolems = new ArrayList<>(List.of("minecraft:armorer", "minecraft:weaponsmith"));
+        public List<String> professionsThatRepairGuards = new ArrayList<>(List.of("minecraft:weaponsmith", "minecraft:armorer", "minecraft:toolsmith"));
+        public int maxClericHeal = 3;
+        public int maxGolemRepair = 3;
+        public int maxVillageRepair = 3;
+        public boolean armorersRepairGuardArmor = true;
+        public boolean ConvertVillagerIfHaveHOTV = false;
+        public boolean BlacksmithHealing = true;
+        public boolean ClericHealing = true;
+        public boolean VillagersRunFromPolarBears = true;
+        public List<String> convertibleProfessions = new ArrayList<>(List.of("nitwit", "none"));
+
+        // Golem stuff
+        public boolean golemFloat = false;
+
+        // Guard stuff
+        public boolean guardSinkToFightUnderWater = true;
+        public int depthGuardHuntUnderwater = 5;
+        public List<String> mobsGuardsProtectTargeted = new ArrayList<>(List.of("minecraft:villager", "guardvillagers:guard", "minecraft:iron_golem"));
+        public List<String> mobsGuardsProtectHurt = new ArrayList<>(List.of("minecraft:villager", "guardvillagers:guard", "minecraft:iron_golem"));
+        public double guardCrossbowAttackRadius = 8.0;
+        public List<String> structuresThatSpawnGuards = new ArrayList<>(List.of("minecraft:village/common/iron_golem"));
+        public int guardSpawnInVillage = 6;
+        public boolean convertGuardOnDeath = true;
+        public boolean multiFollow = true;
+        public double chanceToDropEquipment = 100.0;
+        public boolean GuardsRunFromPolarBears = false;
+        public boolean GuardsOpenDoors = true;
+        public boolean GuardRaiseShield = false;
+        public double chanceToBreakEquipment = 1.0;
+        public boolean guardTeleport = true;
+        public boolean GuardFormation = true;
+        public double friendlyFireCheckValue = -0.9;
+        public boolean FriendlyFire = true;
+        public double GuardVillagerHelpRange = 50.0;
+        public double amountOfHealthRegenerated = 1.0;
+        public boolean guardArrowsHurtVillagers = true;
+        public boolean giveGuardStuffHOTV = false;
+        public boolean setGuardPatrolHotv = false;
+        public int reputationRequirement = 15;
+        public boolean followHero = true;
+        public int reputationRequirementToBeAttacked = -100;
+        public boolean guardPatrolVillageAi = false;
+        public boolean guardPatrolAroundVillageWorkstations = true;
+
+        public void fromJson(JsonObject obj) {
+            RaidAnimals = obj.getAsJsonPrimitive("RaidAnimals").getAsBoolean();
+            WitchesVillager = obj.getAsJsonPrimitive("WitchesVillager").getAsBoolean();
+            IllagersRunFromPolarBears = obj.getAsJsonPrimitive("IllagersRunFromPolarBears").getAsBoolean();
+            AttackAllMobs = obj.getAsJsonPrimitive("AttackAllMobs").getAsBoolean();
+            MobsAttackGuards = obj.getAsJsonPrimitive("MobsAttackGuards").getAsBoolean();
+            MobBlackList = jsonList(obj, "MobBlackList");
+            MobWhiteList = jsonList(obj, "MobWhiteList");
+            professionsThatHeal = jsonList(obj, "professionsThatHeal");
+            professionsThatRepairGolems = jsonList(obj, "professionsThatRepairGolems");
+            professionsThatRepairGuards = jsonList(obj, "professionsThatRepairGuards");
+            maxClericHeal = obj.getAsJsonPrimitive("maxClericHeal").getAsInt();
+            maxGolemRepair = obj.getAsJsonPrimitive("maxGolemRepair").getAsInt();
+            maxVillageRepair = obj.getAsJsonPrimitive("maxVillageRepair").getAsInt();
+            armorersRepairGuardArmor = obj.getAsJsonPrimitive("armorersRepairGuardArmor").getAsBoolean();
+            ConvertVillagerIfHaveHOTV = obj.getAsJsonPrimitive("ConvertVillagerIfHaveHOTV").getAsBoolean();
+            BlacksmithHealing = obj.getAsJsonPrimitive("BlacksmithHealing").getAsBoolean();
+            ClericHealing = obj.getAsJsonPrimitive("ClericHealing").getAsBoolean();
+            VillagersRunFromPolarBears = obj.getAsJsonPrimitive("VillagersRunFromPolarBears").getAsBoolean();
+            convertibleProfessions = jsonList(obj, "convertibleProfessions");
+            golemFloat = obj.getAsJsonPrimitive("golemFloat").getAsBoolean();
+            guardSinkToFightUnderWater = obj.getAsJsonPrimitive("guardSinkToFightUnderWater").getAsBoolean();
+            depthGuardHuntUnderwater = obj.getAsJsonPrimitive("depthGuardHuntUnderwater").getAsInt();
+            mobsGuardsProtectTargeted = jsonList(obj, "mobsGuardsProtectTargeted");
+            mobsGuardsProtectHurt = jsonList(obj, "mobsGuardsProtectHurt");
+            guardCrossbowAttackRadius = obj.getAsJsonPrimitive("guardCrossbowAttackRadius").getAsDouble();
+            structuresThatSpawnGuards = jsonList(obj, "structuresThatSpawnGuards");
+            guardSpawnInVillage = obj.getAsJsonPrimitive("guardSpawnInVillage").getAsInt();
+            convertGuardOnDeath = obj.getAsJsonPrimitive("convertGuardOnDeath").getAsBoolean();
+            multiFollow = obj.getAsJsonPrimitive("multiFollow").getAsBoolean();
+            chanceToDropEquipment = obj.getAsJsonPrimitive("chanceToDropEquipment").getAsDouble();
+            GuardsRunFromPolarBears = obj.getAsJsonPrimitive("GuardsRunFromPolarBears").getAsBoolean();
+            GuardsOpenDoors = obj.getAsJsonPrimitive("GuardsOpenDoors").getAsBoolean();
+            GuardRaiseShield = obj.getAsJsonPrimitive("GuardRaiseShield").getAsBoolean();
+            chanceToBreakEquipment = obj.getAsJsonPrimitive("chanceToBreakEquipment").getAsDouble();
+            guardTeleport = obj.getAsJsonPrimitive("guardTeleport").getAsBoolean();
+            GuardFormation = obj.getAsJsonPrimitive("GuardFormation").getAsBoolean();
+            friendlyFireCheckValue = obj.getAsJsonPrimitive("friendlyFireCheckValue").getAsDouble();
+            FriendlyFire = obj.getAsJsonPrimitive("FriendlyFire").getAsBoolean();
+            GuardVillagerHelpRange = obj.getAsJsonPrimitive("GuardVillagerHelpRange").getAsDouble();
+            amountOfHealthRegenerated = obj.getAsJsonPrimitive("amountOfHealthRegenerated").getAsDouble();
+            guardArrowsHurtVillagers = obj.getAsJsonPrimitive("guardArrowsHurtVillagers").getAsBoolean();
+            giveGuardStuffHOTV = obj.getAsJsonPrimitive("giveGuardStuffHOTV").getAsBoolean();
+            setGuardPatrolHotv = obj.getAsJsonPrimitive("setGuardPatrolHotv").getAsBoolean();
+            reputationRequirement = obj.getAsJsonPrimitive("reputationRequirement").getAsInt();
+            followHero = obj.getAsJsonPrimitive("followHero").getAsBoolean();
+            reputationRequirementToBeAttacked = obj.getAsJsonPrimitive("reputationRequirementToBeAttacked").getAsInt();
+            guardPatrolVillageAi = obj.getAsJsonPrimitive("guardPatrolVillageAi").getAsBoolean();
+            guardPatrolAroundVillageWorkstations = obj.getAsJsonPrimitive("guardPatrolAroundVillageWorkstations").getAsBoolean();
+        }
+
+        public JsonObject toJson() {
+            JsonObject obj = new JsonObject();
+            obj.addProperty("RaidAnimals", RaidAnimals);
+            obj.addProperty("WitchesVillager", WitchesVillager);
+            obj.addProperty("IllagersRunFromPolarBears", IllagersRunFromPolarBears);
+            obj.addProperty("AttackAllMobs", AttackAllMobs);
+            obj.addProperty("MobsAttackGuards", MobsAttackGuards);
+            obj.add("MobBlackList", listToJson(MobBlackList));
+            obj.add("MobWhiteList", listToJson(MobWhiteList));
+            obj.add("professionsThatHeal", listToJson(professionsThatHeal));
+            obj.add("professionsThatRepairGolems", listToJson(professionsThatRepairGolems));
+            obj.add("professionsThatRepairGuards", listToJson(professionsThatRepairGuards));
+            obj.addProperty("maxClericHeal", maxClericHeal);
+            obj.addProperty("maxGolemRepair", maxGolemRepair);
+            obj.addProperty("maxVillageRepair", maxVillageRepair);
+            obj.addProperty("armorersRepairGuardArmor", armorersRepairGuardArmor);
+            obj.addProperty("ConvertVillagerIfHaveHOTV", ConvertVillagerIfHaveHOTV);
+            obj.addProperty("BlacksmithHealing", BlacksmithHealing);
+            obj.addProperty("ClericHealing", ClericHealing);
+            obj.addProperty("VillagersRunFromPolarBears", VillagersRunFromPolarBears);
+            obj.add("convertibleProfessions", listToJson(convertibleProfessions));
+            obj.addProperty("golemFloat", golemFloat);
+            obj.addProperty("guardSinkToFightUnderWater", guardSinkToFightUnderWater);
+            obj.addProperty("depthGuardHuntUnderwater", depthGuardHuntUnderwater);
+            obj.add("mobsGuardsProtectTargeted", listToJson(mobsGuardsProtectTargeted));
+            obj.add("mobsGuardsProtectHurt", listToJson(mobsGuardsProtectHurt));
+            obj.addProperty("guardCrossbowAttackRadius", guardCrossbowAttackRadius);
+            obj.add("structuresThatSpawnGuards", listToJson(structuresThatSpawnGuards));
+            obj.addProperty("guardSpawnInVillage", guardSpawnInVillage);
+            obj.addProperty("convertGuardOnDeath", convertGuardOnDeath);
+            obj.addProperty("multiFollow", multiFollow);
+            obj.addProperty("chanceToDropEquipment", chanceToDropEquipment);
+            obj.addProperty("GuardsRunFromPolarBears", GuardsRunFromPolarBears);
+            obj.addProperty("GuardsOpenDoors", GuardsOpenDoors);
+            obj.addProperty("GuardRaiseShield", GuardRaiseShield);
+            obj.addProperty("chanceToBreakEquipment", chanceToBreakEquipment);
+            obj.addProperty("guardTeleport", guardTeleport);
+            obj.addProperty("GuardFormation", GuardFormation);
+            obj.addProperty("friendlyFireCheckValue", friendlyFireCheckValue);
+            obj.addProperty("FriendlyFire", FriendlyFire);
+            obj.addProperty("GuardVillagerHelpRange", GuardVillagerHelpRange);
+            obj.addProperty("amountOfHealthRegenerated", amountOfHealthRegenerated);
+            obj.addProperty("guardArrowsHurtVillagers", guardArrowsHurtVillagers);
+            obj.addProperty("giveGuardStuffHOTV", giveGuardStuffHOTV);
+            obj.addProperty("setGuardPatrolHotv", setGuardPatrolHotv);
+            obj.addProperty("reputationRequirement", reputationRequirement);
+            obj.addProperty("followHero", followHero);
+            obj.addProperty("reputationRequirementToBeAttacked", reputationRequirementToBeAttacked);
+            obj.addProperty("guardPatrolVillageAi", guardPatrolVillageAi);
+            obj.addProperty("guardPatrolAroundVillageWorkstations", guardPatrolAroundVillageWorkstations);
+            return obj;
         }
     }
 
     public static class ClientConfig {
-        public final ModConfigSpec.BooleanValue GuardSteve;
-        public final ModConfigSpec.BooleanValue bigHeadBabyVillager;
-        public final ModConfigSpec.BooleanValue guardInventoryNumbers;
+        public boolean GuardSteve = false;
+        public boolean bigHeadBabyVillager = true;
+        public boolean guardInventoryNumbers = true;
 
-        public ClientConfig(ModConfigSpec.Builder builder) {
-            GuardSteve = builder.comment("Textures not included, make your own textures by making a resource pack that adds guard_steve_0 - 6").translation(GuardVillagers.MODID + ".config.steveModel").define("Have guards use the steve model?", false);
-            bigHeadBabyVillager = builder.define("Have baby villagers have big heads like in bedrock?", true);
-            guardInventoryNumbers = builder.comment("Note that this option will automatically activate if a guard has more hearts than default").define("Display guard health in icons", true);
+        public void fromJson(JsonObject obj) {
+            GuardSteve = obj.getAsJsonPrimitive("GuardSteve").getAsBoolean();
+            bigHeadBabyVillager = obj.getAsJsonPrimitive("bigHeadBabyVillager").getAsBoolean();
+            guardInventoryNumbers = obj.getAsJsonPrimitive("guardInventoryNumbers").getAsBoolean();
         }
+
+        public JsonObject toJson() {
+            JsonObject obj = new JsonObject();
+            obj.addProperty("GuardSteve", GuardSteve);
+            obj.addProperty("bigHeadBabyVillager", bigHeadBabyVillager);
+            obj.addProperty("guardInventoryNumbers", guardInventoryNumbers);
+            return obj;
+        }
+    }
+
+    public static class StartUpConfig {
+        public double healthModifier = 20.0;
+        public double speedModifier = 0.5;
+        public double followRangeModifier = 20.0;
+
+        public void fromJson(JsonObject obj) {
+            healthModifier = obj.getAsJsonPrimitive("healthModifier").getAsDouble();
+            speedModifier = obj.getAsJsonPrimitive("speedModifier").getAsDouble();
+            followRangeModifier = obj.getAsJsonPrimitive("followRangeModifier").getAsDouble();
+        }
+
+        public JsonObject toJson() {
+            JsonObject obj = new JsonObject();
+            obj.addProperty("healthModifier", healthModifier);
+            obj.addProperty("speedModifier", speedModifier);
+            obj.addProperty("followRangeModifier", followRangeModifier);
+            return obj;
+        }
+    }
+
+    private static List<String> jsonList(JsonObject obj, String key) {
+        List<String> list = new ArrayList<>();
+        if (obj.has(key)) {
+            for (JsonElement e : obj.getAsJsonArray(key)) {
+                list.add(e.getAsString());
+            }
+        }
+        return list;
+    }
+
+    private static JsonArray listToJson(List<String> list) {
+        JsonArray arr = new JsonArray();
+        for (String s : list) {
+            arr.add(s);
+        }
+        return arr;
     }
 }

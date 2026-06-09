@@ -23,7 +23,7 @@ public class RepairGuardEquipment extends VillagerHelp {
     private Guard guard;
 
     public RepairGuardEquipment() {
-        super(ImmutableMap.of(MemoryModuleType.NEAREST_LIVING_ENTITIES, MemoryStatus.VALUE_PRESENT), GuardConfig.COMMON.professionsThatRepairGuards.get());
+        super(ImmutableMap.of(MemoryModuleType.NEAREST_LIVING_ENTITIES, MemoryStatus.VALUE_PRESENT), GuardConfig.COMMON.professionsThatRepairGuards);
     }
 
     @Override
@@ -32,7 +32,7 @@ public class RepairGuardEquipment extends VillagerHelp {
             List<LivingEntity> list = owner.getBrain().getMemory(MemoryModuleType.NEAREST_LIVING_ENTITIES).get();
             if (!list.isEmpty()) {
                 for (LivingEntity livingEntity : list) {
-                    if (!livingEntity.isInvisible() && livingEntity.isAlive() && livingEntity instanceof Guard guard) { // Check only for iron golems and if a day has passed since the last time a golem was healed
+                    if (!livingEntity.isInvisible() && livingEntity.isAlive() && livingEntity instanceof Guard guard) {
                         if (owner.getVillagerData().profession() == VillagerProfession.ARMORER) {
                             for (int i = 0; i < guard.guardInventory.getContainerSize() - 2; ++i) {
                                 ItemStack itemstack = guard.guardInventory.getItem(i);
@@ -59,22 +59,21 @@ public class RepairGuardEquipment extends VillagerHelp {
 
     @Override
     protected long timeToCheck(LivingEntity owner) {
-        Long timeLastRepairedGuardEquipment = owner.getData(GuardDataAttachments.LAST_REPAIRED_GUARD);
-        return timeLastRepairedGuardEquipment;
+        return GuardDataAttachments.getLastRepairedGuard(owner.getUUID());
     }
 
     @Override
     protected boolean canStillUse(ServerLevel level, Villager entity, long gameTime) {
-        return entity.getData(GuardDataAttachments.TIMES_REPAIRED_GUARD) < GuardConfig.COMMON.maxVillageRepair.get();
+        return GuardDataAttachments.getTimesRepairedGuard(entity.getUUID()) < GuardConfig.COMMON.maxVillageRepair;
     }
 
     @Override
     protected void stop(ServerLevel worldIn, Villager entityIn, long gameTimeIn) {
-        if (entityIn.getData(GuardDataAttachments.TIMES_REPAIRED_GUARD) >= GuardConfig.COMMON.maxVillageRepair.get()) {
-            entityIn.setData(GuardDataAttachments.LAST_REPAIRED_GUARD, worldIn.getOverworldClockTime());
+        if (GuardDataAttachments.getTimesRepairedGuard(entityIn.getUUID()) >= GuardConfig.COMMON.maxVillageRepair) {
+            GuardDataAttachments.setLastRepairedGuard(entityIn.getUUID(), worldIn.getOverworldClockTime());
             entityIn.getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
             entityIn.getBrain().eraseMemory(MemoryModuleType.LOOK_TARGET);
-            entityIn.setData(GuardDataAttachments.TIMES_REPAIRED_GUARD, 0);
+            GuardDataAttachments.setTimesRepairedGuard(entityIn.getUUID(), 0);
             float pitch = 1.0F + (guard.getRandom().nextFloat() - guard.getRandom().nextFloat()) * 0.2F;
             guard.playSound(SoundEvents.ANVIL_USE, 1.0F, pitch);
         }
@@ -92,7 +91,7 @@ public class RepairGuardEquipment extends VillagerHelp {
     public void repairGuardEquipment(Villager healer) {
         BehaviorUtils.setWalkAndLookTargetMemories(healer, guard, 0.5F, 0);
         if (healer.distanceTo(guard) <= 2.0D) {
-            healer.setData(GuardDataAttachments.TIMES_REPAIRED_GUARD, healer.getData(GuardDataAttachments.TIMES_REPAIRED_GUARD) + 1);
+            GuardDataAttachments.incrementTimesRepairedGuard(healer.getUUID());
             VillagerProfession profession = healer.getVillagerData().profession().value();
             if (profession.name() == VillagerProfession.ARMORER) {
                 for (int i = 0; i < guard.guardInventory.getContainerSize() - 2; ++i) {

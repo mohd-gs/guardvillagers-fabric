@@ -22,7 +22,7 @@ public class RepairGolem extends VillagerHelp {
     private LivingEntity golem;
 
     public RepairGolem() {
-        super(ImmutableMap.of(MemoryModuleType.NEAREST_LIVING_ENTITIES, MemoryStatus.VALUE_PRESENT), GuardConfig.COMMON.professionsThatRepairGolems.get());
+        super(ImmutableMap.of(MemoryModuleType.NEAREST_LIVING_ENTITIES, MemoryStatus.VALUE_PRESENT), GuardConfig.COMMON.professionsThatRepairGolems);
     }
 
     @Override
@@ -31,7 +31,7 @@ public class RepairGolem extends VillagerHelp {
             List<LivingEntity> list = owner.getBrain().getMemory(MemoryModuleType.NEAREST_LIVING_ENTITIES).get();
             if (!list.isEmpty()) {
                 for (LivingEntity golem : list) {
-                    if (!golem.isInvisible() && golem.isAlive() && golem.getType() == EntityType.IRON_GOLEM) { // Check only for iron golems and if a day has passed since the last time a golem was healed
+                    if (!golem.isInvisible() && golem.isAlive() && golem.getType() == EntityType.IRON_GOLEM) {
                         if (golem.getHealth() <= (golem.getMaxHealth() * 0.75F)) {
                             this.golem = golem;
                             return super.checkExtraStartConditions(worldIn, owner);
@@ -45,22 +45,22 @@ public class RepairGolem extends VillagerHelp {
 
     @Override
     protected long timeToCheck(LivingEntity owner) {
-        return owner.getData(GuardDataAttachments.LAST_REPAIRED_GOLEM);
+        return GuardDataAttachments.getLastRepairedGolem(owner.getUUID());
     }
 
     @Override
     protected boolean canStillUse(ServerLevel level, Villager entity, long gameTime) {
-        return entity.getData(GuardDataAttachments.TIMES_HEALED_GOLEM) < GuardConfig.COMMON.maxGolemRepair.get() && this.golem.getHealth() <= this.golem.getMaxHealth();
+        return GuardDataAttachments.getTimesHealedGolem(entity.getUUID()) < GuardConfig.COMMON.maxGolemRepair && this.golem.getHealth() <= this.golem.getMaxHealth();
     }
 
     @Override
     protected void stop(ServerLevel worldIn, Villager entityIn, long gameTimeIn) {
-        if (entityIn.getData(GuardDataAttachments.TIMES_HEALED_GOLEM) >= GuardConfig.COMMON.maxGolemRepair.get()) {
+        if (GuardDataAttachments.getTimesHealedGolem(entityIn.getUUID()) >= GuardConfig.COMMON.maxGolemRepair) {
             entityIn.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
-            entityIn.setData(GuardDataAttachments.LAST_REPAIRED_GOLEM.get(), worldIn.getOverworldClockTime());
+            GuardDataAttachments.setLastRepairedGolem(entityIn.getUUID(), worldIn.getOverworldClockTime());
             entityIn.getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
             entityIn.getBrain().eraseMemory(MemoryModuleType.LOOK_TARGET);
-            entityIn.setData(GuardDataAttachments.TIMES_HEALED_GOLEM.get(), 0);
+            GuardDataAttachments.setTimesHealedGolem(entityIn.getUUID(), 0);
         }
     }
 
@@ -77,7 +77,7 @@ public class RepairGolem extends VillagerHelp {
     public void healGolem(Villager healer) {
         BehaviorUtils.setWalkAndLookTargetMemories(healer, golem, 0.5F, 0);
         if (healer.distanceTo(golem) <= 2.0D) {
-            healer.setData(GuardDataAttachments.TIMES_HEALED_GOLEM.get(), healer.getData(GuardDataAttachments.TIMES_HEALED_GOLEM.get()) + 1);
+            GuardDataAttachments.incrementTimesHealedGolem(healer.getUUID());
             healer.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_INGOT));
             healer.swing(InteractionHand.MAIN_HAND);
             golem.heal(15.0F);

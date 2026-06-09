@@ -1,6 +1,7 @@
-
 package tallestegg.guardvillagers.client;
 
+import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.geom.ModelLayerLocation;
 import net.minecraft.client.model.geom.builders.CubeDeformation;
@@ -8,21 +9,17 @@ import net.minecraft.client.model.geom.builders.LayerDefinition;
 import net.minecraft.client.model.geom.builders.MeshDefinition;
 import net.minecraft.client.renderer.entity.ArmorModelSet;
 import net.minecraft.resources.Identifier;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import tallestegg.guardvillagers.GuardEntityType;
 import tallestegg.guardvillagers.GuardVillagers;
 import tallestegg.guardvillagers.client.models.GuardArmorModel;
 import tallestegg.guardvillagers.client.models.GuardModel;
 import tallestegg.guardvillagers.client.models.GuardSteveModel;
 import tallestegg.guardvillagers.client.renderer.GuardRenderer;
+import tallestegg.guardvillagers.networking.GuardOpenInventoryPacket;
 
-@EventBusSubscriber(modid = GuardVillagers.MODID, value = Dist.CLIENT)
-public final class GuardClientEvents {
+public final class GuardClientEvents implements ClientModInitializer {
     private static Identifier id(String path) {
-        return Identifier.fromNamespaceAndPath(GuardVillagers.MODID, path);
+        return Identifier.of(GuardVillagers.MODID, path);
     }
 
     public static final ModelLayerLocation GUARD = new ModelLayerLocation(id("guard"), "main");
@@ -38,23 +35,29 @@ public final class GuardClientEvents {
     public static final ModelLayerLocation GUARD_STEVE_ARMOR_FEET = new ModelLayerLocation(id("guard_steve_armor/feet"), "main");
     public static final ArmorModelSet<ModelLayerLocation> GUARD_STEVE_ARMOR = new ArmorModelSet<>(GUARD_STEVE_ARMOR_HEAD, GUARD_STEVE_ARMOR_CHEST, GUARD_STEVE_ARMOR_LEGS, GUARD_STEVE_ARMOR_FEET);
 
-    @SubscribeEvent
-    public static void layerDefinitions(EntityRenderersEvent.RegisterLayerDefinitions event) {
-        event.registerLayerDefinition(GuardClientEvents.GUARD, GuardModel::createBodyLayer);
-        event.registerLayerDefinition(GuardClientEvents.GUARD_STEVE, GuardSteveModel::createMesh);
-        registerArmorLayerDefs(event, GUARD_ARMOR, GuardArmorModel.createArmorMeshSet(new CubeDeformation(0.5F), new CubeDeformation(1.0F)));
-        registerArmorLayerDefs(event, GUARD_STEVE_ARMOR, HumanoidModel.createArmorMeshSet(new CubeDeformation(0.5F), new CubeDeformation(1.0F)));
+    @Override
+    public void onInitializeClient() {
+        // Register layer definitions
+        net.fabricmc.fabric.api.client.rendering.v1.EntityModelLayerRegistry.registerModelLayer(GUARD, GuardModel::createBodyLayer);
+        net.fabricmc.fabric.api.client.rendering.v1.EntityModelLayerRegistry.registerModelLayer(GUARD_STEVE, GuardSteveModel::createMesh);
+        registerArmorLayerDefs(GUARD_ARMOR, GuardArmorModel.createArmorMeshSet(new CubeDeformation(0.5F), new CubeDeformation(1.0F)));
+        registerArmorLayerDefs(GUARD_STEVE_ARMOR, HumanoidModel.createArmorMeshSet(new CubeDeformation(0.5F), new CubeDeformation(1.0F)));
+
+        // Register entity renderer
+        net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(GuardEntityType.GUARD, GuardRenderer::new);
+
+        // Register client packet receiver
+        ClientPlayNetworking.registerGlobalReceiver(GuardOpenInventoryPacket.ID, (payload, context) -> {
+            context.client().execute(() -> {
+                tallestegg.guardvillagers.GuardPacketHandler.openGuardInventory(payload);
+            });
+        });
     }
 
-    private static void registerArmorLayerDefs(EntityRenderersEvent.RegisterLayerDefinitions event, ArmorModelSet<ModelLayerLocation> targets, ArmorModelSet<MeshDefinition> meshes) {
-        event.registerLayerDefinition(targets.head(), () -> LayerDefinition.create(meshes.head(), 64, 32));
-        event.registerLayerDefinition(targets.chest(), () -> LayerDefinition.create(meshes.chest(), 64, 32));
-        event.registerLayerDefinition(targets.legs(), () -> LayerDefinition.create(meshes.legs(), 64, 32));
-        event.registerLayerDefinition(targets.feet(), () -> LayerDefinition.create(meshes.feet(), 64, 32));
-    }
-
-    @SubscribeEvent
-    public static void entityRenderers(EntityRenderersEvent.RegisterRenderers event) {
-        event.registerEntityRenderer(GuardEntityType.GUARD.get(), GuardRenderer::new);
+    private static void registerArmorLayerDefs(ArmorModelSet<ModelLayerLocation> targets, ArmorModelSet<MeshDefinition> meshes) {
+        net.fabricmc.fabric.api.client.rendering.v1.EntityModelLayerRegistry.registerModelLayer(targets.head(), () -> LayerDefinition.create(meshes.head(), 64, 32));
+        net.fabricmc.fabric.api.client.rendering.v1.EntityModelLayerRegistry.registerModelLayer(targets.chest(), () -> LayerDefinition.create(meshes.chest(), 64, 32));
+        net.fabricmc.fabric.api.client.rendering.v1.EntityModelLayerRegistry.registerModelLayer(targets.legs(), () -> LayerDefinition.create(meshes.legs(), 64, 32));
+        net.fabricmc.fabric.api.client.rendering.v1.EntityModelLayerRegistry.registerModelLayer(targets.feet(), () -> LayerDefinition.create(meshes.feet(), 64, 32));
     }
 }

@@ -56,7 +56,7 @@ public abstract class DefendVillageGoalGolemMixin {
         for (Villager villager : villagers) {
             for (Player player : players) {
                 int rep = villager.getPlayerReputation(player);
-                if (rep <= GuardConfig.COMMON.reputationRequirementToBeAttacked.get()) {
+                if (rep <= GuardConfig.COMMON.reputationRequirementToBeAttacked) {
                     this.potentialTarget = player;
                     break;
                 }

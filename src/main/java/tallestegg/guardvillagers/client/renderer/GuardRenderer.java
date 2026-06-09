@@ -15,7 +15,6 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.entity.Avatar;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.item.*;
@@ -33,23 +32,23 @@ import tallestegg.guardvillagers.configuration.GuardConfig;
 public class GuardRenderer extends HumanoidMobRenderer<Guard, GuardRenderState, HumanoidModel<GuardRenderState>> {
 
     private static Identifier baseTexture() {
-        return Identifier.fromNamespaceAndPath(
+        return Identifier.of(
                 GuardVillagers.MODID,
-                "textures/entity/guard/guard" + (GuardConfig.CLIENT.GuardSteve.get() ? "_steve" : "") + ".png"
+                "textures/entity/guard/guard" + (GuardConfig.CLIENT.GuardSteve ? "_steve" : "") + ".png"
         );
     }
 
     public GuardRenderer(EntityRendererProvider.Context context) {
         super(
                 context,
-                GuardConfig.CLIENT.GuardSteve.get()
+                GuardConfig.CLIENT.GuardSteve
                         ? new GuardSteveModel(context.bakeLayer(GuardClientEvents.GUARD_STEVE))
                         : new GuardModel(context.bakeLayer(GuardClientEvents.GUARD)),
                 0.5F
         );
         this.addLayer(new GuardVariantLayer(this, context.getResourceManager()));
         this.addLayer(new ItemInHandLayer<>(this));
-        if (GuardConfig.CLIENT.GuardSteve.get()) {
+        if (GuardConfig.CLIENT.GuardSteve) {
             ArmorModelSet<HumanoidModel<GuardRenderState>> armorModels =
                     ArmorModelSet.bake(GuardClientEvents.GUARD_STEVE_ARMOR, context.getModelSet(), HumanoidModel::new);
             this.addLayer(new HumanoidArmorLayer<>(this, armorModels, context.getEquipmentRenderer()));
@@ -117,6 +116,7 @@ public class GuardRenderer extends HumanoidMobRenderer<Guard, GuardRenderState, 
         state.isCrouching = entity.getPose() == net.minecraft.world.entity.Pose.CROUCHING;
     }
 
+    // Fabric: Removed IClientItemExtensions.of() NeoForge call - use vanilla-only arm pose logic
     private static HumanoidModel.ArmPose renderArmPose(Guard guard, HumanoidArm arm) {
         ItemStack itemstack = guard.getItemInHand(InteractionHand.MAIN_HAND);
         ItemStack itemstack1 = guard.getItemInHand(InteractionHand.OFF_HAND);
@@ -129,12 +129,8 @@ public class GuardRenderer extends HumanoidMobRenderer<Guard, GuardRenderState, 
         return guard.getMainArm() == arm ? humanoidmodel$armpose : humanoidmodel$armpose1;
     }
 
+    // Fabric: Removed NeoForge IClientItemExtensions - vanilla-only arm pose identification
     private static HumanoidModel.ArmPose identifyArmPoses(Guard guard, ItemStack handItem, InteractionHand hand) {
-        var extensions = net.neoforged.neoforge.client.extensions.common.IClientItemExtensions.of(handItem);
-        var armPose = extensions.getArmPose(guard, hand, handItem);
-        if (armPose != null) {
-            return armPose;
-        }
         if (handItem.isEmpty()) {
             return HumanoidModel.ArmPose.EMPTY;
         } else {
@@ -195,13 +191,13 @@ public class GuardRenderer extends HumanoidMobRenderer<Guard, GuardRenderState, 
 
         @Override
         public void submit(PoseStack poseStack, SubmitNodeCollector nodeCollector, int packedLight, GuardRenderState state, float yRot, float xRot) {
-            String guardSteve = GuardConfig.CLIENT.GuardSteve.get() ? "_steve" : "";
-            Identifier variantTexture = Identifier.fromNamespaceAndPath(
+            String guardSteve = GuardConfig.CLIENT.GuardSteve ? "_steve" : "";
+            Identifier variantTexture = Identifier.of(
                     GuardVillagers.MODID,
                     "textures/entity/guard/guard_variants/guard" + guardSteve + "_" + state.variant + ".png"
             );
             if (this.resourceManager.getResource(variantTexture).isEmpty()) {
-                variantTexture = Identifier.fromNamespaceAndPath(
+                variantTexture = Identifier.of(
                         GuardVillagers.MODID,
                         "textures/entity/guard/guard_variants/guard" + guardSteve + "_plains.png"
                 );
