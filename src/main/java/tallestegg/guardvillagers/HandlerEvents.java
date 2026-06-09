@@ -153,7 +153,7 @@ public class HandlerEvents {
                 if (GuardConfig.COMMON.WitchesVillager) {
                     // Using NearestAttackableTargetGoal as a safe replacement for NearestAttackableWitchTargetGoal
                     // which may not exist in all 26.1.x versions
-                    witch.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(witch, AbstractVillager.class, 10, true, false, (serverLevel, target) -> ISNT_BABY.test(target)));
+                    witch.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(witch, AbstractVillager.class, 10, true, false, (target, serverLevel) -> ISNT_BABY.test(target)));
                     witch.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(witch, IronGolem.class, 10, true, false, null));
                     witch.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(witch, Guard.class, 10, true, false, null));
                 }
@@ -209,7 +209,7 @@ public class HandlerEvents {
                             }
                         }
                     }
-                    return InteractionResult.sidedSuccess(level.isClientSide());
+                    return level.isClientSide() ? InteractionResult.SUCCESS : InteractionResult.SUCCESS_SERVER;
                 }
             }
         }

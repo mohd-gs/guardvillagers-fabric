@@ -19,7 +19,7 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.item.*;
 import net.minecraft.world.item.component.SwingAnimation;
-import net.minecraft.world.item.component.SwingAnimationType;
+import net.minecraft.world.item.SwingAnimationType;
 import net.minecraft.world.item.equipment.Equippable;
 import tallestegg.guardvillagers.GuardVillagers;
 import tallestegg.guardvillagers.client.GuardClientEvents;

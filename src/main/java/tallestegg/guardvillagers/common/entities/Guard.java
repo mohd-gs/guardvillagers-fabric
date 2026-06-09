@@ -236,7 +236,8 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         }
         this.readPersistentAngerSaveData(this.level(), input);
         // Load gossip data
-        this.gossips.update(input, "Gossips");
+        this.gossips.clear();
+        input.read("Gossips", GossipContainer.CODEC).ifPresent(this.gossips::putAll);
     }
 
     @Override
@@ -271,7 +272,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
             }
         }
         // Save gossip data
-        this.gossips.store(output, "Gossips");
+        output.store("Gossips", GossipContainer.CODEC, this.gossips);
     }
 
     public static int slotToInventoryIndex(EquipmentSlot slot) {
@@ -435,7 +436,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         // Close any open guard inventory screens for players viewing this guard
         if (this.interacting && this.level() instanceof ServerLevel serverLevel) {
             for (ServerPlayer player : serverLevel.players()) {
-                if (player.containerMenu instanceof GuardContainer gc && gc.guard == this) {
+                if (player.containerMenu instanceof GuardContainer gc && gc.getGuard() == this) {
                     player.closeContainer();
                 }
             }
@@ -611,7 +612,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         this.targetSelector.addGoal(3, new HeroHurtTargetGoal(this));
         this.targetSelector.addGoal(5, new DefendVillageGuardGoal(this));
         if (GuardConfig.COMMON.AttackAllMobs) {
-            this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, Mob.class, 5, true, true, (mob, serverLevel) -> mob instanceof Enemy && !GuardConfig.COMMON.MobBlackList.contains(mob.getEncodeId())));
+            this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, Mob.class, 5, true, true, (target, serverLevel) -> target instanceof Enemy && !GuardConfig.COMMON.MobBlackList.contains(target.getEncodeId())));
         } else {
             this.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, Ravager.class, true));
             this.targetSelector.addGoal(4, new NearestAttackableTargetGoal<>(this, Witch.class, true));
@@ -619,7 +620,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
             this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, Zombie.class, true, (target, serverLevel) -> !(target instanceof ZombifiedPiglin)));
         }
         this.targetSelector.addGoal(4, new NearestAttackableTargetGoal<>(this, Player.class, 10, true, false, this::isAngryAt));
-        this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, LivingEntity.class, 5, true, true, (mob, serverLevel) -> GuardConfig.COMMON.MobWhiteList.contains(mob.getEncodeId())));
+        this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, LivingEntity.class, 5, true, true, (target, serverLevel) -> GuardConfig.COMMON.MobWhiteList.contains(target.getEncodeId())));
         this.targetSelector.addGoal(8, new ResetUniversalAngerTargetGoal<>(this, true));
     }
 

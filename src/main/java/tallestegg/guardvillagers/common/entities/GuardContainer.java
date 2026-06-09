@@ -18,6 +18,10 @@ public class GuardContainer extends AbstractContainerMenu {
     private final Container guardInventory;
     private final Guard guard;
 
+    public Guard getGuard() {
+        return this.guard;
+    }
+
     public GuardContainer(int id, Inventory playerInventory, Container guardInventory, final Guard guard) {
         // 26.1.x note: passing null as MenuType works but may cause issues with some
         // networking/validation. Consider registering a proper MenuType in a future update.
