@@ -8,6 +8,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.SpawnEggItem;
+import tallestegg.guardvillagers.common.items.WarHornItem;
 
 public class GuardItems {
     public static final SpawnEggItem GUARD_SPAWN_EGG = registerSpawnEgg(
@@ -16,6 +17,11 @@ public class GuardItems {
 
     public static final SpawnEggItem ILLUSIONER_SPAWN_EGG = registerSpawnEgg(
             GuardVillagers.MODID, "illusioner_spawn_egg", EntityType.ILLUSIONER
+    );
+
+    // Feature 3: War Horn item
+    public static final WarHornItem WAR_HORN = registerWarHorn(
+            GuardVillagers.MODID, "war_horn"
     );
 
     // MC 26.1.x: Item.Properties requires setId() BEFORE the Item constructor runs.
@@ -28,6 +34,17 @@ public class GuardItems {
                 .spawnEgg(entityType)
                 .setId(resourceKey);
         SpawnEggItem item = new SpawnEggItem(properties);
+        return Registry.register(BuiltInRegistries.ITEM, resourceKey, item);
+    }
+
+    private static WarHornItem registerWarHorn(String namespace, String path) {
+        ResourceKey<Item> resourceKey = ResourceKey.create(
+                Registries.ITEM, Identifier.fromNamespaceAndPath(namespace, path)
+        );
+        Item.Properties properties = new Item.Properties()
+                .durability(50)
+                .setId(resourceKey);
+        WarHornItem item = new WarHornItem(properties);
         return Registry.register(BuiltInRegistries.ITEM, resourceKey, item);
     }
 

@@ -81,11 +81,19 @@ public class HandlerEvents {
                     )
             );
             for (Mob nearbyMob : list) {
-                if ((nearbyMob.getTarget() == null) && (nearbyMob.getType() == GuardEntityType.GUARD || nearbyMob.getType() == EntityType.IRON_GOLEM)) {
+                if (nearbyMob.getType() == GuardEntityType.GUARD || nearbyMob.getType() == EntityType.IRON_GOLEM) {
                     if (nearbyMob.getTeam() != null && mob.getTeam() != null && mob.getTeam().isAlliedTo(nearbyMob.getTeam()))
                         return;
-                    else
+                    // BUG FIX: Also alert guards that have a stale/distant target, not just null targets.
+                    // Previously only guards with target == null were alerted, which meant guards with
+                    // dead or far-away targets would stand idle instead of helping.
+                    LivingEntity currentTarget = nearbyMob.getTarget();
+                    boolean needsNewTarget = currentTarget == null
+                            || !currentTarget.isAlive()
+                            || nearbyMob.distanceTo(currentTarget) > 32.0D;
+                    if (needsNewTarget) {
                         nearbyMob.setTarget(mob);
+                    }
                 }
             }
         }

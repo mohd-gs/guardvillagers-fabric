@@ -113,55 +113,117 @@ public class GuardConfig {
         public boolean guardPatrolVillageAi = false;
         public boolean guardPatrolAroundVillageWorkstations = true;
 
+        // Guard Leveling
+        public boolean guardLeveling = true;
+        public int killsForSoldier = 5;
+        public int killsForVeteran = 15;
+        public int killsForCaptain = 30;
+        public double soldierHealthBonus = 4.0;
+        public double soldierDamageBonus = 0.5;
+        public double veteranHealthBonus = 8.0;
+        public double veteranDamageBonus = 1.0;
+        public double captainHealthBonus = 12.0;
+        public double captainDamageBonus = 2.0;
+
+        // Weapon-Based Specialization
+        public boolean weaponSpecialization = true;
+        public double archerRetreatDistance = 3.0;
+        public double berserkerDamageBonus = 0.2;
+
+        // War Horn
+        public double warHornRange = 128.0;
+        public int warHornCombatDurationSeconds = 30;
+
+        // Enhanced Mount System
+        public boolean guardsAutoMountHorses = true;
+        public double mountedKnockbackBonus = 1.3;
+
+        // Wounded Behavior
+        public boolean woundedBehavior = true;
+        public double woundedHealthThreshold = 0.25;
+        public double recoveredHealthThreshold = 0.40;
+
+        // Night Watch
+        public boolean nightWatchEnabled = true;
+        public double nightFollowRangeMultiplier = 2.0;
+
+        // Auto Equipment Upgrade
+        public boolean autoEquipmentUpgrade = true;
+        public double equipmentPickupRange = 3.0;
+
         public void fromJson(JsonObject obj) {
-            RaidAnimals = obj.getAsJsonPrimitive("RaidAnimals").getAsBoolean();
-            WitchesVillager = obj.getAsJsonPrimitive("WitchesVillager").getAsBoolean();
-            IllagersRunFromPolarBears = obj.getAsJsonPrimitive("IllagersRunFromPolarBears").getAsBoolean();
-            AttackAllMobs = obj.getAsJsonPrimitive("AttackAllMobs").getAsBoolean();
-            MobsAttackGuards = obj.getAsJsonPrimitive("MobsAttackGuards").getAsBoolean();
-            MobBlackList = jsonList(obj, "MobBlackList");
-            MobWhiteList = jsonList(obj, "MobWhiteList");
-            professionsThatHeal = jsonList(obj, "professionsThatHeal");
-            professionsThatRepairGolems = jsonList(obj, "professionsThatRepairGolems");
-            professionsThatRepairGuards = jsonList(obj, "professionsThatRepairGuards");
-            maxClericHeal = obj.getAsJsonPrimitive("maxClericHeal").getAsInt();
-            maxGolemRepair = obj.getAsJsonPrimitive("maxGolemRepair").getAsInt();
-            maxVillageRepair = obj.getAsJsonPrimitive("maxVillageRepair").getAsInt();
-            armorersRepairGuardArmor = obj.getAsJsonPrimitive("armorersRepairGuardArmor").getAsBoolean();
-            ConvertVillagerIfHaveHOTV = obj.getAsJsonPrimitive("ConvertVillagerIfHaveHOTV").getAsBoolean();
-            BlacksmithHealing = obj.getAsJsonPrimitive("BlacksmithHealing").getAsBoolean();
-            ClericHealing = obj.getAsJsonPrimitive("ClericHealing").getAsBoolean();
-            VillagersRunFromPolarBears = obj.getAsJsonPrimitive("VillagersRunFromPolarBears").getAsBoolean();
-            convertibleProfessions = jsonList(obj, "convertibleProfessions");
-            golemFloat = obj.getAsJsonPrimitive("golemFloat").getAsBoolean();
-            guardSinkToFightUnderWater = obj.getAsJsonPrimitive("guardSinkToFightUnderWater").getAsBoolean();
-            depthGuardHuntUnderwater = obj.getAsJsonPrimitive("depthGuardHuntUnderwater").getAsInt();
-            mobsGuardsProtectTargeted = jsonList(obj, "mobsGuardsProtectTargeted");
-            mobsGuardsProtectHurt = jsonList(obj, "mobsGuardsProtectHurt");
-            guardCrossbowAttackRadius = obj.getAsJsonPrimitive("guardCrossbowAttackRadius").getAsDouble();
-            structuresThatSpawnGuards = jsonList(obj, "structuresThatSpawnGuards");
-            guardSpawnInVillage = obj.getAsJsonPrimitive("guardSpawnInVillage").getAsInt();
-            convertGuardOnDeath = obj.getAsJsonPrimitive("convertGuardOnDeath").getAsBoolean();
-            multiFollow = obj.getAsJsonPrimitive("multiFollow").getAsBoolean();
-            chanceToDropEquipment = obj.getAsJsonPrimitive("chanceToDropEquipment").getAsDouble();
-            GuardsRunFromPolarBears = obj.getAsJsonPrimitive("GuardsRunFromPolarBears").getAsBoolean();
-            GuardsOpenDoors = obj.getAsJsonPrimitive("GuardsOpenDoors").getAsBoolean();
-            GuardRaiseShield = obj.getAsJsonPrimitive("GuardRaiseShield").getAsBoolean();
-            chanceToBreakEquipment = obj.getAsJsonPrimitive("chanceToBreakEquipment").getAsDouble();
-            guardTeleport = obj.getAsJsonPrimitive("guardTeleport").getAsBoolean();
-            GuardFormation = obj.getAsJsonPrimitive("GuardFormation").getAsBoolean();
-            friendlyFireCheckValue = obj.getAsJsonPrimitive("friendlyFireCheckValue").getAsDouble();
-            FriendlyFire = obj.getAsJsonPrimitive("FriendlyFire").getAsBoolean();
-            GuardVillagerHelpRange = obj.getAsJsonPrimitive("GuardVillagerHelpRange").getAsDouble();
-            amountOfHealthRegenerated = obj.getAsJsonPrimitive("amountOfHealthRegenerated").getAsDouble();
-            guardArrowsHurtVillagers = obj.getAsJsonPrimitive("guardArrowsHurtVillagers").getAsBoolean();
-            giveGuardStuffHOTV = obj.getAsJsonPrimitive("giveGuardStuffHOTV").getAsBoolean();
-            setGuardPatrolHotv = obj.getAsJsonPrimitive("setGuardPatrolHotv").getAsBoolean();
-            reputationRequirement = obj.getAsJsonPrimitive("reputationRequirement").getAsInt();
-            followHero = obj.getAsJsonPrimitive("followHero").getAsBoolean();
-            reputationRequirementToBeAttacked = obj.getAsJsonPrimitive("reputationRequirementToBeAttacked").getAsInt();
-            guardPatrolVillageAi = obj.getAsJsonPrimitive("guardPatrolVillageAi").getAsBoolean();
-            guardPatrolAroundVillageWorkstations = obj.getAsJsonPrimitive("guardPatrolAroundVillageWorkstations").getAsBoolean();
+            RaidAnimals = getBoolSafe(obj, "RaidAnimals", RaidAnimals);
+            WitchesVillager = getBoolSafe(obj, "WitchesVillager", WitchesVillager);
+            IllagersRunFromPolarBears = getBoolSafe(obj, "IllagersRunFromPolarBears", IllagersRunFromPolarBears);
+            AttackAllMobs = getBoolSafe(obj, "AttackAllMobs", AttackAllMobs);
+            MobsAttackGuards = getBoolSafe(obj, "MobsAttackGuards", MobsAttackGuards);
+            MobBlackList = jsonList(obj, "MobBlackList", MobBlackList);
+            MobWhiteList = jsonList(obj, "MobWhiteList", MobWhiteList);
+            professionsThatHeal = jsonList(obj, "professionsThatHeal", professionsThatHeal);
+            professionsThatRepairGolems = jsonList(obj, "professionsThatRepairGolems", professionsThatRepairGolems);
+            professionsThatRepairGuards = jsonList(obj, "professionsThatRepairGuards", professionsThatRepairGuards);
+            maxClericHeal = getIntSafe(obj, "maxClericHeal", maxClericHeal);
+            maxGolemRepair = getIntSafe(obj, "maxGolemRepair", maxGolemRepair);
+            maxVillageRepair = getIntSafe(obj, "maxVillageRepair", maxVillageRepair);
+            armorersRepairGuardArmor = getBoolSafe(obj, "armorersRepairGuardArmor", armorersRepairGuardArmor);
+            ConvertVillagerIfHaveHOTV = getBoolSafe(obj, "ConvertVillagerIfHaveHOTV", ConvertVillagerIfHaveHOTV);
+            BlacksmithHealing = getBoolSafe(obj, "BlacksmithHealing", BlacksmithHealing);
+            ClericHealing = getBoolSafe(obj, "ClericHealing", ClericHealing);
+            VillagersRunFromPolarBears = getBoolSafe(obj, "VillagersRunFromPolarBears", VillagersRunFromPolarBears);
+            convertibleProfessions = jsonList(obj, "convertibleProfessions", convertibleProfessions);
+            golemFloat = getBoolSafe(obj, "golemFloat", golemFloat);
+            guardSinkToFightUnderWater = getBoolSafe(obj, "guardSinkToFightUnderWater", guardSinkToFightUnderWater);
+            depthGuardHuntUnderwater = getIntSafe(obj, "depthGuardHuntUnderwater", depthGuardHuntUnderwater);
+            mobsGuardsProtectTargeted = jsonList(obj, "mobsGuardsProtectTargeted", mobsGuardsProtectTargeted);
+            mobsGuardsProtectHurt = jsonList(obj, "mobsGuardsProtectHurt", mobsGuardsProtectHurt);
+            guardCrossbowAttackRadius = getDoubleSafe(obj, "guardCrossbowAttackRadius", guardCrossbowAttackRadius);
+            structuresThatSpawnGuards = jsonList(obj, "structuresThatSpawnGuards", structuresThatSpawnGuards);
+            guardSpawnInVillage = getIntSafe(obj, "guardSpawnInVillage", guardSpawnInVillage);
+            convertGuardOnDeath = getBoolSafe(obj, "convertGuardOnDeath", convertGuardOnDeath);
+            multiFollow = getBoolSafe(obj, "multiFollow", multiFollow);
+            chanceToDropEquipment = getDoubleSafe(obj, "chanceToDropEquipment", chanceToDropEquipment);
+            GuardsRunFromPolarBears = getBoolSafe(obj, "GuardsRunFromPolarBears", GuardsRunFromPolarBears);
+            GuardsOpenDoors = getBoolSafe(obj, "GuardsOpenDoors", GuardsOpenDoors);
+            GuardRaiseShield = getBoolSafe(obj, "GuardRaiseShield", GuardRaiseShield);
+            chanceToBreakEquipment = getDoubleSafe(obj, "chanceToBreakEquipment", chanceToBreakEquipment);
+            guardTeleport = getBoolSafe(obj, "guardTeleport", guardTeleport);
+            GuardFormation = getBoolSafe(obj, "GuardFormation", GuardFormation);
+            friendlyFireCheckValue = getDoubleSafe(obj, "friendlyFireCheckValue", friendlyFireCheckValue);
+            FriendlyFire = getBoolSafe(obj, "FriendlyFire", FriendlyFire);
+            GuardVillagerHelpRange = getDoubleSafe(obj, "GuardVillagerHelpRange", GuardVillagerHelpRange);
+            amountOfHealthRegenerated = getDoubleSafe(obj, "amountOfHealthRegenerated", amountOfHealthRegenerated);
+            guardArrowsHurtVillagers = getBoolSafe(obj, "guardArrowsHurtVillagers", guardArrowsHurtVillagers);
+            giveGuardStuffHOTV = getBoolSafe(obj, "giveGuardStuffHOTV", giveGuardStuffHOTV);
+            setGuardPatrolHotv = getBoolSafe(obj, "setGuardPatrolHotv", setGuardPatrolHotv);
+            reputationRequirement = getIntSafe(obj, "reputationRequirement", reputationRequirement);
+            followHero = getBoolSafe(obj, "followHero", followHero);
+            reputationRequirementToBeAttacked = getIntSafe(obj, "reputationRequirementToBeAttacked", reputationRequirementToBeAttacked);
+            guardPatrolVillageAi = getBoolSafe(obj, "guardPatrolVillageAi", guardPatrolVillageAi);
+            guardPatrolAroundVillageWorkstations = getBoolSafe(obj, "guardPatrolAroundVillageWorkstations", guardPatrolAroundVillageWorkstations);
+            guardLeveling = getBoolSafe(obj, "guardLeveling", guardLeveling);
+            killsForSoldier = getIntSafe(obj, "killsForSoldier", killsForSoldier);
+            killsForVeteran = getIntSafe(obj, "killsForVeteran", killsForVeteran);
+            killsForCaptain = getIntSafe(obj, "killsForCaptain", killsForCaptain);
+            soldierHealthBonus = getDoubleSafe(obj, "soldierHealthBonus", soldierHealthBonus);
+            soldierDamageBonus = getDoubleSafe(obj, "soldierDamageBonus", soldierDamageBonus);
+            veteranHealthBonus = getDoubleSafe(obj, "veteranHealthBonus", veteranHealthBonus);
+            veteranDamageBonus = getDoubleSafe(obj, "veteranDamageBonus", veteranDamageBonus);
+            captainHealthBonus = getDoubleSafe(obj, "captainHealthBonus", captainHealthBonus);
+            captainDamageBonus = getDoubleSafe(obj, "captainDamageBonus", captainDamageBonus);
+            weaponSpecialization = getBoolSafe(obj, "weaponSpecialization", weaponSpecialization);
+            archerRetreatDistance = getDoubleSafe(obj, "archerRetreatDistance", archerRetreatDistance);
+            berserkerDamageBonus = getDoubleSafe(obj, "berserkerDamageBonus", berserkerDamageBonus);
+            warHornRange = getDoubleSafe(obj, "warHornRange", warHornRange);
+            warHornCombatDurationSeconds = getIntSafe(obj, "warHornCombatDurationSeconds", warHornCombatDurationSeconds);
+            guardsAutoMountHorses = getBoolSafe(obj, "guardsAutoMountHorses", guardsAutoMountHorses);
+            mountedKnockbackBonus = getDoubleSafe(obj, "mountedKnockbackBonus", mountedKnockbackBonus);
+            woundedBehavior = getBoolSafe(obj, "woundedBehavior", woundedBehavior);
+            woundedHealthThreshold = getDoubleSafe(obj, "woundedHealthThreshold", woundedHealthThreshold);
+            recoveredHealthThreshold = getDoubleSafe(obj, "recoveredHealthThreshold", recoveredHealthThreshold);
+            nightWatchEnabled = getBoolSafe(obj, "nightWatchEnabled", nightWatchEnabled);
+            nightFollowRangeMultiplier = getDoubleSafe(obj, "nightFollowRangeMultiplier", nightFollowRangeMultiplier);
+            autoEquipmentUpgrade = getBoolSafe(obj, "autoEquipmentUpgrade", autoEquipmentUpgrade);
+            equipmentPickupRange = getDoubleSafe(obj, "equipmentPickupRange", equipmentPickupRange);
         }
 
         public JsonObject toJson() {
@@ -214,6 +276,30 @@ public class GuardConfig {
             obj.addProperty("reputationRequirementToBeAttacked", reputationRequirementToBeAttacked);
             obj.addProperty("guardPatrolVillageAi", guardPatrolVillageAi);
             obj.addProperty("guardPatrolAroundVillageWorkstations", guardPatrolAroundVillageWorkstations);
+            obj.addProperty("guardLeveling", guardLeveling);
+            obj.addProperty("killsForSoldier", killsForSoldier);
+            obj.addProperty("killsForVeteran", killsForVeteran);
+            obj.addProperty("killsForCaptain", killsForCaptain);
+            obj.addProperty("soldierHealthBonus", soldierHealthBonus);
+            obj.addProperty("soldierDamageBonus", soldierDamageBonus);
+            obj.addProperty("veteranHealthBonus", veteranHealthBonus);
+            obj.addProperty("veteranDamageBonus", veteranDamageBonus);
+            obj.addProperty("captainHealthBonus", captainHealthBonus);
+            obj.addProperty("captainDamageBonus", captainDamageBonus);
+            obj.addProperty("weaponSpecialization", weaponSpecialization);
+            obj.addProperty("archerRetreatDistance", archerRetreatDistance);
+            obj.addProperty("berserkerDamageBonus", berserkerDamageBonus);
+            obj.addProperty("warHornRange", warHornRange);
+            obj.addProperty("warHornCombatDurationSeconds", warHornCombatDurationSeconds);
+            obj.addProperty("guardsAutoMountHorses", guardsAutoMountHorses);
+            obj.addProperty("mountedKnockbackBonus", mountedKnockbackBonus);
+            obj.addProperty("woundedBehavior", woundedBehavior);
+            obj.addProperty("woundedHealthThreshold", woundedHealthThreshold);
+            obj.addProperty("recoveredHealthThreshold", recoveredHealthThreshold);
+            obj.addProperty("nightWatchEnabled", nightWatchEnabled);
+            obj.addProperty("nightFollowRangeMultiplier", nightFollowRangeMultiplier);
+            obj.addProperty("autoEquipmentUpgrade", autoEquipmentUpgrade);
+            obj.addProperty("equipmentPickupRange", equipmentPickupRange);
             return obj;
         }
     }
@@ -222,11 +308,13 @@ public class GuardConfig {
         public boolean GuardSteve = false;
         public boolean bigHeadBabyVillager = true;
         public boolean guardInventoryNumbers = true;
+        public boolean showRankInName = true;
 
         public void fromJson(JsonObject obj) {
-            GuardSteve = obj.getAsJsonPrimitive("GuardSteve").getAsBoolean();
-            bigHeadBabyVillager = obj.getAsJsonPrimitive("bigHeadBabyVillager").getAsBoolean();
-            guardInventoryNumbers = obj.getAsJsonPrimitive("guardInventoryNumbers").getAsBoolean();
+            GuardSteve = getBoolSafe(obj, "GuardSteve", GuardSteve);
+            bigHeadBabyVillager = getBoolSafe(obj, "bigHeadBabyVillager", bigHeadBabyVillager);
+            guardInventoryNumbers = getBoolSafe(obj, "guardInventoryNumbers", guardInventoryNumbers);
+            showRankInName = getBoolSafe(obj, "showRankInName", showRankInName);
         }
 
         public JsonObject toJson() {
@@ -234,6 +322,7 @@ public class GuardConfig {
             obj.addProperty("GuardSteve", GuardSteve);
             obj.addProperty("bigHeadBabyVillager", bigHeadBabyVillager);
             obj.addProperty("guardInventoryNumbers", guardInventoryNumbers);
+            obj.addProperty("showRankInName", showRankInName);
             return obj;
         }
     }
@@ -244,9 +333,9 @@ public class GuardConfig {
         public double followRangeModifier = 20.0;
 
         public void fromJson(JsonObject obj) {
-            healthModifier = obj.getAsJsonPrimitive("healthModifier").getAsDouble();
-            speedModifier = obj.getAsJsonPrimitive("speedModifier").getAsDouble();
-            followRangeModifier = obj.getAsJsonPrimitive("followRangeModifier").getAsDouble();
+            healthModifier = getDoubleSafe(obj, "healthModifier", healthModifier);
+            speedModifier = getDoubleSafe(obj, "speedModifier", speedModifier);
+            followRangeModifier = getDoubleSafe(obj, "followRangeModifier", followRangeModifier);
         }
 
         public JsonObject toJson() {
@@ -258,14 +347,31 @@ public class GuardConfig {
         }
     }
 
-    private static List<String> jsonList(JsonObject obj, String key) {
+    private static List<String> jsonList(JsonObject obj, String key, List<String> defaultList) {
+        if (!obj.has(key)) return new ArrayList<>(defaultList);
         List<String> list = new ArrayList<>();
-        if (obj.has(key)) {
-            for (JsonElement e : obj.getAsJsonArray(key)) {
-                list.add(e.getAsString());
-            }
+        for (JsonElement e : obj.getAsJsonArray(key)) {
+            list.add(e.getAsString());
         }
         return list;
+    }
+
+    private static boolean getBoolSafe(JsonObject obj, String key, boolean defaultValue) {
+        if (!obj.has(key)) return defaultValue;
+        try { return obj.getAsJsonPrimitive(key).getAsBoolean(); }
+        catch (Exception e) { return defaultValue; }
+    }
+
+    private static int getIntSafe(JsonObject obj, String key, int defaultValue) {
+        if (!obj.has(key)) return defaultValue;
+        try { return obj.getAsJsonPrimitive(key).getAsInt(); }
+        catch (Exception e) { return defaultValue; }
+    }
+
+    private static double getDoubleSafe(JsonObject obj, String key, double defaultValue) {
+        if (!obj.has(key)) return defaultValue;
+        try { return obj.getAsJsonPrimitive(key).getAsDouble(); }
+        catch (Exception e) { return defaultValue; }
     }
 
     private static JsonArray listToJson(List<String> list) {

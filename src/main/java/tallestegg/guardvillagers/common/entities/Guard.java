@@ -39,7 +39,9 @@ import net.minecraft.world.entity.ai.targeting.TargetingConditions;
 import net.minecraft.world.entity.ai.util.DefaultRandomPos;
 import net.minecraft.world.entity.ai.util.LandRandomPos;
 import net.minecraft.world.entity.ai.village.ReputationEventType;
+import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.entity.animal.golem.IronGolem;
+// AbstractHorse import removed - MC 26.1.x restructured horse package
 import net.minecraft.world.entity.animal.polarbear.PolarBear;
 import net.minecraft.world.entity.monster.*;
 import net.minecraft.world.entity.monster.zombie.Zombie;
@@ -54,6 +56,7 @@ import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
 import net.minecraft.world.entity.raid.Raider;
 import net.minecraft.world.food.FoodProperties;
 import net.minecraft.world.item.*;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.component.BlocksAttacks;
 import net.minecraft.world.item.component.KineticWeapon;
 import net.minecraft.world.item.enchantment.EnchantmentEffectComponents;
@@ -79,6 +82,10 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import tallestegg.guardvillagers.GuardEntityType;
 import tallestegg.guardvillagers.GuardVillagers;
 import tallestegg.guardvillagers.GuardSounds;
+import tallestegg.guardvillagers.common.entities.ai.goals.GuardRetreatGoal;
+import tallestegg.guardvillagers.common.entities.ai.goals.GuardMountHorseGoal;
+import tallestegg.guardvillagers.common.entities.ai.goals.PickupBetterEquipmentGoal;
+import tallestegg.guardvillagers.common.entities.ai.goals.GuardHelpNearbyGuardGoal;
 import tallestegg.guardvillagers.configuration.GuardConfig;
 import tallestegg.guardvillagers.loot_tables.GuardLootTables;
 import tallestegg.guardvillagers.networking.GuardOpenInventoryPacket;
@@ -113,6 +120,30 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
     private static final EntityDataAccessor<Long> DATA_ANGER_END_TIME = SynchedEntityData.defineId(Guard.class, EntityDataSerializers.LONG);
     private static final UniformInt PERSISTENT_ANGER_TIME = TimeUtil.rangeOfSeconds(20, 39);
     private static final AttributeModifier HORSE_SPEED_COMPENSATOR = new AttributeModifier(Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "horse_speed_compensator"), 1.5F, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL);
+
+    // Feature 1: Guard Leveling - Rank enum and data
+    public enum GuardRank {
+        RECRUIT(0), SOLDIER(1), VETERAN(2), CAPTAIN(3);
+        public final int level;
+        GuardRank(int level) { this.level = level; }
+    }
+    private static final EntityDataAccessor<Integer> KILL_COUNT = SynchedEntityData.defineId(Guard.class, EntityDataSerializers.INT);
+    private static final EntityDataAccessor<Integer> GUARD_RANK = SynchedEntityData.defineId(Guard.class, EntityDataSerializers.INT);
+
+    // Feature 6: Wounded Behavior - state tracking
+    private boolean wasWounded = false;
+
+    // Feature 8: Night Watch - state tracking
+    private boolean wasNight = false;
+
+    // Feature 3: War Horn - combat stance timer
+    private int combatStanceTicks = 0;
+
+    // Attribute modifiers for leveling
+    private static final Identifier RANK_HEALTH_ID = Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "rank_health_bonus");
+    private static final Identifier RANK_DAMAGE_ID = Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "rank_damage_bonus");
+    private static final Identifier NIGHT_RANGE_ID = Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "night_follow_range");
+    private static final Identifier WOUNDED_SPEED_ID = Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "wounded_speed_penalty");
 
     public Guard(EntityType<? extends Guard> type, Level world) {
         super(type, world);
@@ -238,6 +269,14 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         // Load gossip data
         this.gossips.clear();
         input.read("Gossips", GossipContainer.CODEC).ifPresent(this.gossips::putAll);
+        // Feature 1: Load leveling data
+        this.entityData.set(KILL_COUNT, input.getIntOr("KillCount", 0));
+        this.entityData.set(GUARD_RANK, input.getIntOr("GuardRank", 0));
+        // Feature 3: Load combat stance
+        this.combatStanceTicks = input.getIntOr("CombatStanceTicks", 0);
+        // BUG FIX: Re-apply rank modifiers on entity load, otherwise guards
+        // lose their health/damage bonuses after server restart or chunk reload.
+        this.applyRankModifiers();
     }
 
     @Override
@@ -273,6 +312,11 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         }
         // Save gossip data
         output.store("Gossips", GossipContainer.CODEC, this.gossips);
+        // Feature 1: Save leveling data
+        output.putInt("KillCount", this.entityData.get(KILL_COUNT));
+        output.putInt("GuardRank", this.entityData.get(GUARD_RANK));
+        // Feature 3: Save combat stance
+        output.putInt("CombatStanceTicks", this.combatStanceTicks);
     }
 
     public static int slotToInventoryIndex(EquipmentSlot slot) {
@@ -369,15 +413,29 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
     @Override
     public boolean doHurtTarget(ServerLevel level, Entity target) {
+        // Feature 5: Enhanced Mount - extra knockback when mounted
+        float knockbackStrength = 1.0F;
+        if (this.isMounted() && GuardConfig.COMMON.guardsAutoMountHorses) {
+            knockbackStrength *= GuardConfig.COMMON.mountedKnockbackBonus;
+        }
         if (this.isKicking()) {
-            ((LivingEntity) target).knockback(1.0F, Mth.sin(this.getYRot() * ((float) Math.PI / 180F)), (-Mth.cos(this.getYRot() * ((float) Math.PI / 180F))));
+            ((LivingEntity) target).knockback(knockbackStrength, Mth.sin(this.getYRot() * ((float) Math.PI / 180F)), (-Mth.cos(this.getYRot() * ((float) Math.PI / 180F))));
             this.kickTicks = 10;
             level().broadcastEntityEvent(this, (byte) 4);
             this.lookAt(target, 90.0F, 90.0F);
         }
+        // Feature 2: Berserker bonus damage
         ItemStack hand = this.getMainHandItem();
         this.damageGuardItem(1, EquipmentSlot.MAINHAND, hand);
-        return super.doHurtTarget((ServerLevel) level(), getTarget());
+        // BUG FIX: Use the target parameter instead of getTarget() to ensure
+        // we actually attack the entity that was passed in, not a potentially
+        // different or stale target.
+        boolean result = super.doHurtTarget((ServerLevel) level(), target);
+        // Feature 1: Kill counting for leveling
+        if (result && target instanceof LivingEntity living && !living.isAlive() && GuardConfig.COMMON.guardLeveling) {
+            this.incrementKillCount();
+        }
+        return result;
     }
 
     @Override
@@ -455,6 +513,8 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         if (this.kickTicks > 0) --this.kickTicks;
         if (this.kickCoolDown > 0) --this.kickCoolDown;
         if (this.shieldCoolDown > 0) --this.shieldCoolDown;
+        // Feature 3: Combat stance tick down
+        if (this.combatStanceTicks > 0) --this.combatStanceTicks;
         if (this.getHealth() < this.getMaxHealth() && this.tickCount % 200 == 0) {
             this.heal((float) GuardConfig.COMMON.amountOfHealthRegenerated);
         }
@@ -462,6 +522,10 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
             getItemsFromLootTable(this);
             this.spawnWithArmor = false;
         }
+        // Feature 6: Wounded Behavior
+        this.tickWoundedBehavior();
+        // Feature 8: Night Watch
+        this.tickNightWatch();
         this.updateSwingTime();
         super.aiStep();
     }
@@ -551,6 +615,9 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         data.define(PATROLLING, false);
         data.define(RUNNING_TO_EAT, false);
         data.define(DATA_ANGER_END_TIME, -1L);
+        // Feature 1: Leveling data
+        data.define(KILL_COUNT, 0);
+        data.define(GUARD_RANK, 0);
     }
 
     public void setChargingCrossbow(boolean charging) {
@@ -596,6 +663,12 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         this.goalSelector.addGoal(8, new WaterAvoidingRandomStrollGoal(this, 0.5D));
         this.goalSelector.addGoal(8, new LookAtPlayerGoal(this, AbstractVillager.class, 8.0F));
         this.goalSelector.addGoal(8, new LookAtPlayerGoal(this, Player.class, 8.0F));
+        // Feature 2: Retreat goal for ranged guards
+        this.goalSelector.addGoal(2, new GuardRetreatGoal(this));
+        // Feature 5: Auto-mount horses
+        this.goalSelector.addGoal(3, new GuardMountHorseGoal(this));
+        // Feature 9: Auto equipment upgrade
+        this.goalSelector.addGoal(1, new PickupBetterEquipmentGoal(this));
         this.goalSelector.addGoal(8, new GuardLookAtAndStopMovingWhenBeingTheInteractionTarget(this));
         if (GuardConfig.COMMON.guardSinkToFightUnderWater) {
             this.goalSelector.addGoal(10, new FloatGoal(this) {
@@ -611,6 +684,12 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         this.targetSelector.addGoal(3, new HeroHurtByTargetGoal(this));
         this.targetSelector.addGoal(3, new HeroHurtTargetGoal(this));
         this.targetSelector.addGoal(5, new DefendVillageGuardGoal(this));
+        // BUG FIX: Guard-to-guard target sharing — when a guard is fighting,
+        // nearby idle guards will prioritize helping by targeting the same enemy.
+        // This fixes the issue where large groups of guards would stand idle
+        // while a few fought, because there was no mechanism for guards to
+        // alert each other about threats.
+        this.targetSelector.addGoal(4, new GuardHelpNearbyGuardGoal(this));
         if (GuardConfig.COMMON.AttackAllMobs) {
             this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, Mob.class, 5, true, true, (target, serverLevel) -> target instanceof Enemy && !GuardConfig.COMMON.MobBlackList.contains(GuardVillagers.getEntityTypeId(target))));
         } else {
@@ -839,6 +918,166 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
     public static boolean isConsumable(ItemStack stack) {
         return stack.getUseAnimation() == ItemUseAnimation.EAT || stack.getUseAnimation() == ItemUseAnimation.DRINK && !(stack.getItem() instanceof SplashPotionItem);
+    }
+
+    // === Feature 1: Guard Leveling ===
+
+    public int getKillCount() {
+        return this.entityData.get(KILL_COUNT);
+    }
+
+    public void incrementKillCount() {
+        int kills = this.entityData.get(KILL_COUNT) + 1;
+        this.entityData.set(KILL_COUNT, kills);
+        this.checkRankUp();
+    }
+
+    public GuardRank getGuardRank() {
+        int rankLevel = this.entityData.get(GUARD_RANK);
+        for (GuardRank rank : GuardRank.values()) {
+            if (rank.level == rankLevel) return rank;
+        }
+        return GuardRank.RECRUIT;
+    }
+
+    private void checkRankUp() {
+        if (!GuardConfig.COMMON.guardLeveling) return;
+        int kills = this.entityData.get(KILL_COUNT);
+        int currentRank = this.entityData.get(GUARD_RANK);
+        int newRank = currentRank;
+        if (kills >= GuardConfig.COMMON.killsForCaptain) newRank = GuardRank.CAPTAIN.level;
+        else if (kills >= GuardConfig.COMMON.killsForVeteran) newRank = GuardRank.VETERAN.level;
+        else if (kills >= GuardConfig.COMMON.killsForSoldier) newRank = GuardRank.SOLDIER.level;
+        if (newRank > currentRank) {
+            this.entityData.set(GUARD_RANK, newRank);
+            this.applyRankModifiers();
+            // Heal on rank up
+            this.heal(this.getMaxHealth() - this.getHealth());
+        }
+    }
+
+    private void applyRankModifiers() {
+        if (!GuardConfig.COMMON.guardLeveling) return;
+        AttributeInstance healthAttr = this.getAttribute(Attributes.MAX_HEALTH);
+        AttributeInstance damageAttr = this.getAttribute(Attributes.ATTACK_DAMAGE);
+        if (healthAttr == null || damageAttr == null) return;
+        // Remove old modifiers
+        healthAttr.removeModifier(RANK_HEALTH_ID);
+        damageAttr.removeModifier(RANK_DAMAGE_ID);
+        // Apply new modifiers based on rank
+        GuardRank rank = this.getGuardRank();
+        double healthBonus = switch (rank) {
+            case SOLDIER -> GuardConfig.COMMON.soldierHealthBonus;
+            case VETERAN -> GuardConfig.COMMON.veteranHealthBonus;
+            case CAPTAIN -> GuardConfig.COMMON.captainHealthBonus;
+            default -> 0;
+        };
+        double damageBonus = switch (rank) {
+            case SOLDIER -> GuardConfig.COMMON.soldierDamageBonus;
+            case VETERAN -> GuardConfig.COMMON.veteranDamageBonus;
+            case CAPTAIN -> GuardConfig.COMMON.captainDamageBonus;
+            default -> 0;
+        };
+        if (healthBonus > 0) {
+            healthAttr.addTransientModifier(new AttributeModifier(RANK_HEALTH_ID, healthBonus, AttributeModifier.Operation.ADD_VALUE));
+        }
+        if (damageBonus > 0) {
+            damageAttr.addTransientModifier(new AttributeModifier(RANK_DAMAGE_ID, damageBonus, AttributeModifier.Operation.ADD_VALUE));
+        }
+    }
+
+    public String getRankDisplayName() {
+        return switch (this.getGuardRank()) {
+            case SOLDIER -> "\u00A77[Soldier]\u00A7r";
+            case VETERAN -> "\u00A7e[Veteran]\u00A7r";
+            case CAPTAIN -> "\u00A7b[Captain]\u00A7r";
+            default -> "";
+        };
+    }
+
+    // === Feature 2: Weapon-Based Specialization ===
+
+    public boolean isHoldingRangedWeapon() {
+        ItemStack mainHand = this.getMainHandItem();
+        return mainHand.getItem() instanceof BowItem || mainHand.getItem() instanceof CrossbowItem || mainHand.getItem() instanceof TridentItem;
+    }
+
+    public boolean isBerserker() {
+        if (!GuardConfig.COMMON.weaponSpecialization) return false;
+        ItemStack mainHand = this.getMainHandItem();
+        ItemStack offHand = this.getOffhandItem();
+        return mainHand.getItem() instanceof AxeItem && !offHand.has(DataComponents.BLOCKS_ATTACKS);
+    }
+
+    public boolean isShieldGuard() {
+        if (!GuardConfig.COMMON.weaponSpecialization) return false;
+        return this.getOffhandItem().has(DataComponents.BLOCKS_ATTACKS) && !this.isHoldingRangedWeapon() && !(this.getMainHandItem().getItem() instanceof AxeItem);
+    }
+
+    // === Feature 3: War Horn - Combat Stance ===
+
+    public void setCombatStanceTicks(int ticks) {
+        this.combatStanceTicks = ticks;
+    }
+
+    public boolean isInCombatStance() {
+        return this.combatStanceTicks > 0;
+    }
+
+    // === Feature 5: Enhanced Mount ===
+
+    public boolean isMounted() {
+        return this.getVehicle() != null;
+    }
+
+    // === Feature 6: Wounded Behavior ===
+
+    private void tickWoundedBehavior() {
+        if (!GuardConfig.COMMON.woundedBehavior) return;
+        float healthRatio = this.getHealth() / this.getMaxHealth();
+        boolean isWounded = this.getHealth() > 0 && healthRatio < GuardConfig.COMMON.woundedHealthThreshold;
+        boolean hasRecovered = this.wasWounded && healthRatio >= GuardConfig.COMMON.recoveredHealthThreshold;
+        AttributeInstance speedAttr = this.getAttribute(Attributes.MOVEMENT_SPEED);
+        if (speedAttr == null) return;
+
+        if (isWounded && !this.wasWounded) {
+            // Just entered wounded state - apply speed penalty
+            speedAttr.addTransientModifier(new AttributeModifier(WOUNDED_SPEED_ID, -0.3D, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));
+            // Try to eat food immediately if available
+            if (isConsumable(this.getOffhandItem()) && !this.isUsingItem()) {
+                this.startUsingItem(InteractionHand.OFF_HAND);
+            }
+            this.wasWounded = true;
+        } else if (hasRecovered) {
+            // BUG FIX: Use recoveredHealthThreshold for recovery check to prevent
+            // rapid flickering between wounded/not-wounded states at the boundary.
+            speedAttr.removeModifier(WOUNDED_SPEED_ID);
+            this.wasWounded = false;
+        }
+    }
+
+    public boolean isWounded() {
+        return this.wasWounded;
+    }
+
+    // === Feature 8: Night Watch ===
+
+    private void tickNightWatch() {
+        if (!GuardConfig.COMMON.nightWatchEnabled) return;
+        boolean isNight = this.level().isDarkOutside();
+        AttributeInstance rangeAttr = this.getAttribute(Attributes.FOLLOW_RANGE);
+        if (rangeAttr == null) return;
+
+        if (isNight && !this.wasNight) {
+            // Night started - boost follow range
+            double bonus = (GuardConfig.COMMON.nightFollowRangeMultiplier - 1.0) * GuardConfig.STARTUP.followRangeModifier;
+            rangeAttr.addTransientModifier(new AttributeModifier(NIGHT_RANGE_ID, bonus, AttributeModifier.Operation.ADD_VALUE));
+            this.wasNight = true;
+        } else if (!isNight && this.wasNight) {
+            // Day started - remove follow range boost
+            rangeAttr.removeModifier(NIGHT_RANGE_ID);
+            this.wasNight = false;
+        }
     }
 
     public void tryToTeleportToOwner() {
@@ -1303,7 +1542,11 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
         @Override
         public boolean canUse() {
-            return guard.getHealth() < guard.getMaxHealth() && isConsumable(guard.getOffhandItem()) && guard.isEating() || guard.getHealth() < guard.getMaxHealth() && isConsumable(guard.getOffhandItem()) && guard.getTarget() == null && !guard.isAggressive();
+            // BUG FIX: Added explicit parentheses for clarity and correctness.
+            // Previously the && and || had no grouping, making the intent ambiguous.
+            // Intent: Eat if (already eating + needs health + has food) OR (needs health + has food + no target + not aggressive)
+            return (guard.getHealth() < guard.getMaxHealth() && isConsumable(guard.getOffhandItem()) && guard.isEating())
+                    || (guard.getHealth() < guard.getMaxHealth() && isConsumable(guard.getOffhandItem()) && guard.getTarget() == null && !guard.isAggressive());
         }
 
         @Override
@@ -1318,7 +1561,8 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
                     }
                 }
             }
-            return guard.isUsingItem() && guard.getTarget() == null && guard.getHealth() < guard.getMaxHealth() || guard.getTarget() != null && guard.getHealth() < guard.getMaxHealth() / 2 + 2 && guard.isEating();
+            return (guard.isUsingItem() && guard.getTarget() == null && guard.getHealth() < guard.getMaxHealth())
+                    || (guard.getTarget() != null && guard.getHealth() < guard.getMaxHealth() / 2 + 2 && guard.isEating());
         }
 
         @Override
@@ -1494,7 +1738,10 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         public void stop() {
             super.stop();
             this.mob.setAggressive(false);
-            this.mob.setTarget(null);
+            // BUG FIX: Do NOT clear the target when the crossbow goal stops.
+            // Previously this caused crossbow guards to "forget" what they were fighting
+            // and stand idle, only re-acquiring targets after a long delay.
+            // Let the targetSelector goals handle target clearing instead.
             this.seeTime = 0;
             if (this.mob.isUsingItem()) {
                 this.mob.stopUsingItem();
