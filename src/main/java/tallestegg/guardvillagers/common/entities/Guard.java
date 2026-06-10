@@ -88,6 +88,7 @@ import tallestegg.guardvillagers.common.entities.ai.goals.PickupBetterEquipmentG
 import tallestegg.guardvillagers.common.entities.ai.goals.GuardHelpNearbyGuardGoal;
 import tallestegg.guardvillagers.common.entities.ai.goals.GuardShareFoodGoal;
 import tallestegg.guardvillagers.common.entities.ai.goals.GetOutOfWaterGoal;
+import tallestegg.guardvillagers.common.entities.ai.goals.GuardSquadGoal;
 import tallestegg.guardvillagers.configuration.GuardConfig;
 import tallestegg.guardvillagers.loot_tables.GuardLootTables;
 import tallestegg.guardvillagers.networking.GuardOpenInventoryPacket;
@@ -141,6 +142,18 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
     // Feature 3: War Horn - combat stance timer
     private int combatStanceTicks = 0;
 
+    // Feature 1 (Patrol Route): Patrol waypoints list and current index
+    private List<BlockPos> patrolWaypoints = new ArrayList<>();
+    private int currentWaypointIndex = 0;
+    private int waypointWaitTicks = 0;
+
+    // Feature 7 (Squad System): Squad leader reference
+    @Nullable
+    private EntityReference<Guard> squadLeader;
+
+    // Feature 3 (Enhanced Rank): Captain's Inspiration tick tracker
+    private int captainInspirationCheckTick = -1;
+
     // === Performance optimization: cached values ===
     private int cachedWoundedCheckTick = -1;
     private boolean cachedWoundedResult = false;
@@ -166,6 +179,8 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
     private static final Identifier RANK_DAMAGE_ID = Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "rank_damage_bonus");
     private static final Identifier NIGHT_RANGE_ID = Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "night_follow_range");
     private static final Identifier WOUNDED_SPEED_ID = Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "wounded_speed_penalty");
+    private static final Identifier CAPTAIN_INSPIRATION_ID = Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "captain_inspiration");
+    private static final Identifier RANK_FOLLOW_RANGE_ID = Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "rank_follow_range_bonus");
 
     public Guard(EntityType<? extends Guard> type, Level world) {
         super(type, world);
@@ -296,6 +311,22 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         this.entityData.set(GUARD_RANK, input.getIntOr("GuardRank", 0));
         // Feature 3: Load combat stance
         this.combatStanceTicks = input.getIntOr("CombatStanceTicks", 0);
+        // Feature 1 (Patrol Route): Load patrol waypoints
+        this.patrolWaypoints.clear();
+        int wpCount = input.getIntOr("PatrolWaypointCount", 0);
+        for (int i = 0; i < wpCount; i++) {
+            int wx = input.getIntOr("PatrolWP" + i + "X", 0);
+            int wy = input.getIntOr("PatrolWP" + i + "Y", 0);
+            int wz = input.getIntOr("PatrolWP" + i + "Z", 0);
+            this.patrolWaypoints.add(new BlockPos(wx, wy, wz));
+        }
+        this.currentWaypointIndex = input.getIntOr("CurrentWaypointIndex", 0);
+        // Feature 7 (Squad): Load squad leader UUID
+        String squadLeaderStr = input.getStringOr("SquadLeaderUUID", "");
+        if (!squadLeaderStr.isEmpty()) {
+            // Squad leader will be re-resolved when the entity ticks
+            try { this.pendingSquadLeaderUUID = UUID.fromString(squadLeaderStr); } catch (Throwable t) { this.pendingSquadLeaderUUID = null; }
+        }
         // BUG FIX: Re-apply rank modifiers on entity load, otherwise guards
         // lose their health/damage bonuses after server restart or chunk reload.
         this.applyRankModifiers();
@@ -339,6 +370,20 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         output.putInt("GuardRank", this.entityData.get(GUARD_RANK));
         // Feature 3: Save combat stance
         output.putInt("CombatStanceTicks", this.combatStanceTicks);
+        // Feature 1 (Patrol Route): Save patrol waypoints
+        output.putInt("PatrolWaypointCount", this.patrolWaypoints.size());
+        for (int i = 0; i < this.patrolWaypoints.size(); i++) {
+            BlockPos wp = this.patrolWaypoints.get(i);
+            output.putInt("PatrolWP" + i + "X", wp.getX());
+            output.putInt("PatrolWP" + i + "Y", wp.getY());
+            output.putInt("PatrolWP" + i + "Z", wp.getZ());
+        }
+        output.putInt("CurrentWaypointIndex", this.currentWaypointIndex);
+        // Feature 7 (Squad): Save squad leader UUID
+        Guard leader = this.getSquadLeader();
+        if (leader != null) {
+            output.putString("SquadLeaderUUID", leader.getUUID().toString());
+        }
     }
 
     public static int slotToInventoryIndex(EquipmentSlot slot) {
@@ -489,11 +534,40 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         }
         ItemStack hand = this.getMainHandItem();
         this.damageGuardItem(1, EquipmentSlot.MAINHAND, hand);
+
+        // === Feature 6: Advanced Cavalry — lance charge bonus ===
+        float cavalryBonus = 0.0F;
+        if (this.isMounted() && (hand.getItem() instanceof TridentItem || hand.getItem() instanceof AxeItem)) {
+            cavalryBonus = (float) GuardConfig.COMMON.cavalryChargeDamageBonus;
+        }
+
+        // === Feature 12: Advanced Weapon Balance — weapon-type specific bonuses ===
+        float weaponBonus = 0.0F;
+        // Trident/Spear vs mounted enemy: +100% damage (2x)
+        if (hand.getItem() instanceof TridentItem && target instanceof LivingEntity livingTarget && livingTarget.getVehicle() != null) {
+            weaponBonus += (float) GuardConfig.COMMON.spearVsMountedBonus;
+        }
+        // Axe vs shield-blocking enemy: +50% damage AND disable shield for 5 seconds
+        if (hand.getItem() instanceof AxeItem && target instanceof LivingEntity livingTarget && isActivelyBlocking(livingTarget)) {
+            weaponBonus += (float) GuardConfig.COMMON.axeVsShieldBonus;
+            // Disable the target's shield
+            if (livingTarget instanceof Player player) {
+                player.getCooldowns().addCooldown(livingTarget.getUseItem(), GuardConfig.COMMON.axeShieldDisableSeconds * 20);
+                livingTarget.stopUsingItem();
+            } else if (livingTarget instanceof Guard guardTarget) {
+                guardTarget.disableShieldFor(GuardConfig.COMMON.axeShieldDisableSeconds * 20);
+            }
+        }
+        // Mace: +25% damage always (heavy weapon)
+        if (hand.getItem() instanceof MaceItem) {
+            weaponBonus += (float) GuardConfig.COMMON.maceDamageBonus;
+        }
+
         // BUG FIX: Use the target parameter instead of getTarget() to ensure
         // we actually attack the entity that was passed in, not a potentially
         // different or stale target.
-        // Apply berserker + combat stance damage bonus via temporary attribute modifier
-        float totalBonus = berserkerBonus + stanceBonus;
+        // Apply all damage bonuses via temporary attribute modifier
+        float totalBonus = berserkerBonus + stanceBonus + cavalryBonus + weaponBonus;
         if (totalBonus > 0.0F) {
             AttributeInstance dmgAttr = this.getAttribute(Attributes.ATTACK_DAMAGE);
             if (dmgAttr != null) {
@@ -605,6 +679,12 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         this.tickWoundedBehavior();
         // Feature 8: Night Watch (internally throttled)
         this.tickNightWatch();
+        // Feature 3 (Enhanced Rank): Captain's Inspiration buff
+        this.tickCaptainInspiration();
+        // Feature 1 (Patrol Route): Waypoint wait timer
+        if (this.waypointWaitTicks > 0) --this.waypointWaitTicks;
+        // Feature 7 (Squad): Resolve pending squad leader
+        this.resolveSquadLeader();
         this.updateSwingTime();
         super.aiStep();
     }
@@ -746,6 +826,8 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         this.goalSelector.addGoal(2, new GuardRetreatGoal(this));
         // Feature 5: Auto-mount horses
         this.goalSelector.addGoal(3, new GuardMountHorseGoal(this));
+        // Feature 7: Squad system — captain organizes nearby guards
+        this.goalSelector.addGoal(4, new GuardSquadGoal(this));
         // Feature 9: Auto equipment upgrade
         this.goalSelector.addGoal(1, new PickupBetterEquipmentGoal(this));
         // Feature 10: Share food with wounded guards
@@ -1037,10 +1119,12 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         if (!GuardConfig.COMMON.guardLeveling) return;
         AttributeInstance healthAttr = this.getAttribute(Attributes.MAX_HEALTH);
         AttributeInstance damageAttr = this.getAttribute(Attributes.ATTACK_DAMAGE);
+        AttributeInstance rangeAttr = this.getAttribute(Attributes.FOLLOW_RANGE);
         if (healthAttr == null || damageAttr == null) return;
         // Remove old modifiers
         healthAttr.removeModifier(RANK_HEALTH_ID);
         damageAttr.removeModifier(RANK_DAMAGE_ID);
+        if (rangeAttr != null) rangeAttr.removeModifier(RANK_FOLLOW_RANGE_ID);
         // Apply new modifiers based on rank
         GuardRank rank = this.getGuardRank();
         double healthBonus = switch (rank) {
@@ -1060,6 +1144,10 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         }
         if (damageBonus > 0) {
             damageAttr.addTransientModifier(new AttributeModifier(RANK_DAMAGE_ID, damageBonus, AttributeModifier.Operation.ADD_VALUE));
+        }
+        // Feature 3 (Enhanced Rank): Captains get +4 blocks follow range bonus
+        if (rank == GuardRank.CAPTAIN && rangeAttr != null) {
+            rangeAttr.addTransientModifier(new AttributeModifier(RANK_FOLLOW_RANGE_ID, 4.0D, AttributeModifier.Operation.ADD_VALUE));
         }
     }
 
@@ -1143,6 +1231,145 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
     public boolean isWounded() {
         return this.wasWounded;
+    }
+
+    // === Feature 3 (Enhanced Rank): Captain's Inspiration ===
+
+    private void tickCaptainInspiration() {
+        if (!GuardConfig.COMMON.guardLeveling) return;
+        // Only check every 100 ticks (5 seconds)
+        if (this.tickCount % 100 != 0) return;
+        // Only captains provide the buff
+        if (this.getGuardRank() != GuardRank.CAPTAIN) return;
+
+        double range = GuardConfig.COMMON.captainInspirationRange;
+        // Find nearby guards
+        List<Guard> nearbyGuards = this.level().getEntitiesOfClass(
+                Guard.class,
+                this.getBoundingBox().inflate(range, 4.0D, range),
+                g -> g != this && g.isAlive()
+        );
+
+        // Apply Captain's Inspiration buff to nearby guards in range
+        for (Guard nearby : nearbyGuards) {
+            AttributeInstance dmgAttr = nearby.getAttribute(Attributes.ATTACK_DAMAGE);
+            if (dmgAttr != null && !dmgAttr.hasModifier(CAPTAIN_INSPIRATION_ID)) {
+                dmgAttr.addTransientModifier(new AttributeModifier(
+                        CAPTAIN_INSPIRATION_ID,
+                        GuardConfig.COMMON.captainInspirationDamageBonus,
+                        AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));
+            }
+        }
+
+        // Remove buff from guards that moved out of range
+        List<Guard> allGuardsWithBuff = this.level().getEntitiesOfClass(
+                Guard.class,
+                this.getBoundingBox().inflate(range + 20.0D, 10.0D, range + 20.0D),
+                g -> g != this && g.isAlive() && g.getAttribute(Attributes.ATTACK_DAMAGE) != null
+                        && g.getAttribute(Attributes.ATTACK_DAMAGE).hasModifier(CAPTAIN_INSPIRATION_ID)
+        );
+        for (Guard guard : allGuardsWithBuff) {
+            if (guard.distanceTo(this) > range) {
+                AttributeInstance dmgAttr = guard.getAttribute(Attributes.ATTACK_DAMAGE);
+                if (dmgAttr != null) {
+                    dmgAttr.removeModifier(CAPTAIN_INSPIRATION_ID);
+                }
+            }
+        }
+    }
+
+    // === Feature 1 (Patrol Route): Waypoint accessors ===
+
+    public List<BlockPos> getPatrolWaypoints() {
+        return Collections.unmodifiableList(this.patrolWaypoints);
+    }
+
+    public void setPatrolWaypoints(List<BlockPos> waypoints) {
+        this.patrolWaypoints = new ArrayList<>(waypoints);
+        this.currentWaypointIndex = 0;
+        this.waypointWaitTicks = 0;
+    }
+
+    public int getCurrentWaypointIndex() {
+        return this.currentWaypointIndex;
+    }
+
+    public void setCurrentWaypointIndex(int index) {
+        this.currentWaypointIndex = index;
+    }
+
+    public int getWaypointWaitTicks() {
+        return this.waypointWaitTicks;
+    }
+
+    public void setWaypointWaitTicks(int ticks) {
+        this.waypointWaitTicks = ticks;
+    }
+
+    public boolean hasPatrolWaypoints() {
+        return !this.patrolWaypoints.isEmpty();
+    }
+
+    /**
+     * Advance to the next patrol waypoint and return it.
+     * Loops back to the first waypoint after the last one.
+     */
+    public BlockPos advanceToNextWaypoint() {
+        if (this.patrolWaypoints.isEmpty()) return null;
+        this.currentWaypointIndex = (this.currentWaypointIndex + 1) % this.patrolWaypoints.size();
+        this.waypointWaitTicks = GuardConfig.COMMON.patrolWaitTimeSeconds * 20; // Wait at this waypoint
+        return this.patrolWaypoints.get(this.currentWaypointIndex);
+    }
+
+    /**
+     * Get the current target waypoint, or null if no waypoints set.
+     */
+    @Nullable
+    public BlockPos getCurrentWaypoint() {
+        if (this.patrolWaypoints.isEmpty()) return null;
+        if (this.currentWaypointIndex >= this.patrolWaypoints.size()) {
+            this.currentWaypointIndex = 0;
+        }
+        return this.patrolWaypoints.get(this.currentWaypointIndex);
+    }
+
+    // === Feature 7 (Squad System): Squad accessors ===
+
+    @Nullable
+    private UUID pendingSquadLeaderUUID = null;
+
+    public boolean isSquadMember() {
+        return this.squadLeader != null && this.squadLeader.getEntity(this.level(), Guard.class) != null;
+    }
+
+    @Nullable
+    public Guard getSquadLeader() {
+        if (this.squadLeader == null) return null;
+        return this.squadLeader.getEntity(this.level(), Guard.class);
+    }
+
+    public void setSquadLeader(@Nullable Guard leader) {
+        if (leader == null) {
+            this.squadLeader = null;
+        } else {
+            this.squadLeader = EntityReference.of(leader);
+        }
+    }
+
+    private void resolveSquadLeader() {
+        if (this.pendingSquadLeaderUUID != null && this.squadLeader == null) {
+            // Try to resolve the squad leader from the saved UUID
+            if (this.level() instanceof ServerLevel serverLevel) {
+                Entity entity = serverLevel.getEntity(this.pendingSquadLeaderUUID);
+                if (entity instanceof Guard guardLeader) {
+                    this.squadLeader = EntityReference.of(guardLeader);
+                }
+            }
+            // Clear the pending UUID after a reasonable attempt (either resolved or entity not loaded yet)
+            if (this.tickCount > 200) {
+                this.pendingSquadLeaderUUID = null;
+            }
+        }
     }
 
     // === Feature 8: Night Watch ===
@@ -2235,22 +2462,40 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
         @Override
         public boolean canUse() {
+            // If guard has patrol waypoints, use the waypoint system
+            if (guard.hasPatrolWaypoints()) {
+                return guard.getTarget() == null && !guard.isFollowing() && guard.isPatrolling()
+                        && guard.getWaypointWaitTicks() <= 0
+                        && (guard.level().getGameTime() - delayTime) > 200L;
+            }
+            // Original behavior: single patrol position
             return guard.getTarget() == null && this.guard.getPatrolPos() != null && !this.guard.blockPosition().equals(this.guard.getPatrolPos()) && !guard.isFollowing() && guard.isPatrolling() && (guard.level().getGameTime() - delayTime) > 200L;
         }
 
         @Override
         public boolean canContinueToUse() {
             // Continue as long as we haven't been told to stop and still have a path
-            return !this.shouldStop && !this.guard.getNavigation().isDone() && this.guard.getPatrolPos() != null;
+            return !this.shouldStop && !this.guard.getNavigation().isDone();
         }
 
         @Override
         public void start() {
             if (ticksRan > 200) this.ticksRan = 0;
-            BlockPos blockpos = this.guard.getPatrolPos();
-            if (blockpos != null && !this.guard.blockPosition().equals(this.guard.getPatrolPos())) {
-                Path path = this.guard.getNavigation().createPath(blockpos, 0);
-                this.guard.getNavigation().moveTo(path, this.speed);
+
+            if (guard.hasPatrolWaypoints()) {
+                // Waypoint system: navigate to current waypoint
+                BlockPos target = guard.getCurrentWaypoint();
+                if (target != null) {
+                    Path path = this.guard.getNavigation().createPath(target, 0);
+                    this.guard.getNavigation().moveTo(path, this.speed);
+                }
+            } else {
+                // Original behavior: single patrol position
+                BlockPos blockpos = this.guard.getPatrolPos();
+                if (blockpos != null && !this.guard.blockPosition().equals(this.guard.getPatrolPos())) {
+                    Path path = this.guard.getNavigation().createPath(blockpos, 0);
+                    this.guard.getNavigation().moveTo(path, this.speed);
+                }
             }
         }
 
@@ -2258,8 +2503,23 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         public void tick() {
             if (this.guard.getNavigation().getPath() != null && !this.guard.getNavigation().getPath().canReach())
                 this.ticksRan++;
-            if (this.guard.getNavigation().getPath() != null && !this.guard.getNavigation().getPath().canReach() && !this.guard.blockPosition().equals(this.guard.getPatrolPos()) && ticksRan > 200)
-                this.shouldStop = true;
+
+            if (guard.hasPatrolWaypoints()) {
+                // Check if guard has reached the current waypoint
+                BlockPos currentWaypoint = guard.getCurrentWaypoint();
+                if (currentWaypoint != null && guard.blockPosition().closerThan(currentWaypoint, 2.0D)) {
+                    // Reached waypoint — wait, then advance to next
+                    BlockPos nextWaypoint = guard.advanceToNextWaypoint();
+                    if (nextWaypoint != null) {
+                        guard.setPatrolPos(nextWaypoint);
+                    }
+                    this.shouldStop = true;
+                }
+            } else {
+                // Original behavior
+                if (this.guard.getNavigation().getPath() != null && !this.guard.getNavigation().getPath().canReach() && !this.guard.blockPosition().equals(this.guard.getPatrolPos()) && ticksRan > 200)
+                    this.shouldStop = true;
+            }
         }
 
         @Override

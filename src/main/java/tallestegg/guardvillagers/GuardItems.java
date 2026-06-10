@@ -9,6 +9,7 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.SpawnEggItem;
 import tallestegg.guardvillagers.common.items.WarHornItem;
+import tallestegg.guardvillagers.common.items.PatrolFlagItem;
 
 public class GuardItems {
     public static final SpawnEggItem GUARD_SPAWN_EGG = registerSpawnEgg(
@@ -22,6 +23,11 @@ public class GuardItems {
     // Feature 3: War Horn item
     public static final WarHornItem WAR_HORN = registerWarHorn(
             GuardVillagers.MODID, "war_horn"
+    );
+
+    // Feature 1: Patrol Flag item
+    public static final PatrolFlagItem PATROL_FLAG = registerPatrolFlag(
+            GuardVillagers.MODID, "patrol_flag"
     );
 
     // MC 26.1.x: Item.Properties requires setId() BEFORE the Item constructor runs.
@@ -45,6 +51,17 @@ public class GuardItems {
                 .durability(50)
                 .setId(resourceKey);
         WarHornItem item = new WarHornItem(properties);
+        return Registry.register(BuiltInRegistries.ITEM, resourceKey, item);
+    }
+
+    private static PatrolFlagItem registerPatrolFlag(String namespace, String path) {
+        ResourceKey<Item> resourceKey = ResourceKey.create(
+                Registries.ITEM, Identifier.fromNamespaceAndPath(namespace, path)
+        );
+        Item.Properties properties = new Item.Properties()
+                .durability(100)
+                .setId(resourceKey);
+        PatrolFlagItem item = new PatrolFlagItem(properties);
         return Registry.register(BuiltInRegistries.ITEM, resourceKey, item);
     }
 

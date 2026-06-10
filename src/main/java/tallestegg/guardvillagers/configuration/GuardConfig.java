@@ -195,6 +195,27 @@ public class GuardConfig {
         public boolean autoEquipmentUpgrade = true;
         public double equipmentPickupRange = 3.0;
 
+        // Patrol Route System
+        public int patrolWaitTimeSeconds = 5;
+        public int maxPatrolWaypoints = 8;
+
+        // Enhanced Rank System - Captain's Inspiration
+        public double captainInspirationRange = 10.0;
+        public double captainInspirationDamageBonus = 0.2;
+
+        // Advanced Cavalry
+        public double cavalryChargeDamageBonus = 0.5;
+
+        // Squad System
+        public int squadSize = 4;
+        public double squadFollowRange = 15.0;
+
+        // Advanced Weapon Balance
+        public double spearVsMountedBonus = 1.0;
+        public double axeVsShieldBonus = 0.5;
+        public double maceDamageBonus = 0.25;
+        public int axeShieldDisableSeconds = 5;
+
         public void fromJson(JsonObject obj) {
             RaidAnimals = getBoolSafe(obj, "RaidAnimals", RaidAnimals);
             WitchesVillager = getBoolSafe(obj, "WitchesVillager", WitchesVillager);
@@ -269,6 +290,17 @@ public class GuardConfig {
             nightFollowRangeMultiplier = getDoubleSafe(obj, "nightFollowRangeMultiplier", nightFollowRangeMultiplier);
             autoEquipmentUpgrade = getBoolSafe(obj, "autoEquipmentUpgrade", autoEquipmentUpgrade);
             equipmentPickupRange = getDoubleSafe(obj, "equipmentPickupRange", equipmentPickupRange);
+            patrolWaitTimeSeconds = getIntSafe(obj, "patrolWaitTimeSeconds", patrolWaitTimeSeconds);
+            maxPatrolWaypoints = getIntSafe(obj, "maxPatrolWaypoints", maxPatrolWaypoints);
+            captainInspirationRange = getDoubleSafe(obj, "captainInspirationRange", captainInspirationRange);
+            captainInspirationDamageBonus = getDoubleSafe(obj, "captainInspirationDamageBonus", captainInspirationDamageBonus);
+            cavalryChargeDamageBonus = getDoubleSafe(obj, "cavalryChargeDamageBonus", cavalryChargeDamageBonus);
+            squadSize = getIntSafe(obj, "squadSize", squadSize);
+            squadFollowRange = getDoubleSafe(obj, "squadFollowRange", squadFollowRange);
+            spearVsMountedBonus = getDoubleSafe(obj, "spearVsMountedBonus", spearVsMountedBonus);
+            axeVsShieldBonus = getDoubleSafe(obj, "axeVsShieldBonus", axeVsShieldBonus);
+            maceDamageBonus = getDoubleSafe(obj, "maceDamageBonus", maceDamageBonus);
+            axeShieldDisableSeconds = getIntSafe(obj, "axeShieldDisableSeconds", axeShieldDisableSeconds);
         }
 
         public JsonObject toJson() {
@@ -346,6 +378,17 @@ public class GuardConfig {
             obj.addProperty("nightFollowRangeMultiplier", nightFollowRangeMultiplier);
             obj.addProperty("autoEquipmentUpgrade", autoEquipmentUpgrade);
             obj.addProperty("equipmentPickupRange", equipmentPickupRange);
+            obj.addProperty("patrolWaitTimeSeconds", patrolWaitTimeSeconds);
+            obj.addProperty("maxPatrolWaypoints", maxPatrolWaypoints);
+            obj.addProperty("captainInspirationRange", captainInspirationRange);
+            obj.addProperty("captainInspirationDamageBonus", captainInspirationDamageBonus);
+            obj.addProperty("cavalryChargeDamageBonus", cavalryChargeDamageBonus);
+            obj.addProperty("squadSize", squadSize);
+            obj.addProperty("squadFollowRange", squadFollowRange);
+            obj.addProperty("spearVsMountedBonus", spearVsMountedBonus);
+            obj.addProperty("axeVsShieldBonus", axeVsShieldBonus);
+            obj.addProperty("maceDamageBonus", maceDamageBonus);
+            obj.addProperty("axeShieldDisableSeconds", axeShieldDisableSeconds);
             return obj;
         }
     }
