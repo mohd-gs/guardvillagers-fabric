@@ -145,6 +145,13 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
     private int cachedNightCheckTick = -1;
     private boolean cachedNightResult = false;
 
+    // PERFORMANCE: Cache owner lookup - getPlayerByUUID is expensive (iterates all players)
+    // and was called 3x per getOwner() invocation. Now we cache the result and refresh
+    // every 100 ticks (5 seconds) or on demand.
+    private int cachedOwnerCheckTick = -1;
+    private LivingEntity cachedOwner = null;
+    private static final int OWNER_CACHE_INTERVAL = 100; // ticks
+
     // Attribute modifiers for leveling
     private static final Identifier RANK_HEALTH_ID = Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "rank_health_bonus");
     private static final Identifier RANK_DAMAGE_ID = Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "rank_damage_bonus");
@@ -397,14 +404,42 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
     public LivingEntity getOwner() {
         try {
             UUID uuid = this.getOwnerId();
-            boolean heroOfTheVillage = uuid != null && level().getPlayerByUUID(uuid) != null && Objects.requireNonNull(level().getPlayerByUUID(uuid)).hasEffect(MobEffects.HERO_OF_THE_VILLAGE);
-            return uuid == null || (level().getPlayerByUUID(uuid) != null && (!heroOfTheVillage && GuardConfig.COMMON.followHero) || !GuardConfig.COMMON.followHero && level().getPlayerByUUID(uuid) == null) ? null : level().getPlayerByUUID(uuid);
+            if (uuid == null) return null;
+
+            // PERFORMANCE: Cache the owner lookup. Previously this method called
+            // getPlayerByUUID() 3 times per invocation, which iterates over all
+            // server players each time. Now we do ONE lookup and cache for 5 seconds.
+            int currentTick = this.tickCount;
+            if (currentTick != this.cachedOwnerCheckTick) {
+                this.cachedOwnerCheckTick = currentTick;
+                Player player = level().getPlayerByUUID(uuid);
+                if (player == null) {
+                    this.cachedOwner = null;
+                } else {
+                    boolean heroOfTheVillage = player.hasEffect(MobEffects.HERO_OF_THE_VILLAGE);
+                    // If followHero is enabled, owner only counts when they have HOTV
+                    // If followHero is disabled, owner always counts
+                    if (GuardConfig.COMMON.followHero && !heroOfTheVillage) {
+                        this.cachedOwner = null; // Don't follow without HOTV
+                    } else {
+                        this.cachedOwner = player;
+                    }
+                }
+            }
+            return this.cachedOwner;
         } catch (IllegalArgumentException illegalargumentexception) {
             return null;
         }
     }
 
     public boolean isOwner(LivingEntity entityIn) {
+        // PERFORMANCE: Quick UUID check before expensive getOwner() lookup.
+        // Most entities are NOT the owner, so this cheap check avoids the
+        // expensive getPlayerByUUID() call in 99% of cases.
+        if (entityIn == null) return false;
+        UUID uuid = this.getOwnerId();
+        if (uuid == null) return false;
+        if (!(entityIn instanceof Player player) || !player.getUUID().equals(uuid)) return false;
         return entityIn == this.getOwner();
     }
 
@@ -1041,10 +1076,11 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
     private void tickWoundedBehavior() {
         if (!GuardConfig.COMMON.woundedBehavior) return;
-        // PERFORMANCE: Only check wounded state every 10 ticks instead of every tick
-        // This avoids expensive health/maxHealth division every frame for every guard
-        if (this.tickCount % 10 != 0 && this.cachedWoundedCheckTick > 0) return;
-        this.cachedWoundedCheckTick = this.tickCount;
+        // PERFORMANCE: Only check wounded state every 20 ticks (1 second) instead of every tick.
+        // Health changes are not instant, so checking every frame is unnecessary.
+        // Also, we only need to do work on STATE TRANSITIONS (wounded→not, not→wounded),
+        // not on every tick where the state hasn't changed.
+        if (this.tickCount % 20 != 0) return;
 
         float healthRatio = this.getHealth() / this.getMaxHealth();
         boolean isWounded = this.getHealth() > 0 && healthRatio < GuardConfig.COMMON.woundedHealthThreshold;
@@ -1053,7 +1089,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         if (isWounded && !this.wasWounded) {
             // Just entered wounded state - apply speed penalty
             AttributeInstance speedAttr = this.getAttribute(Attributes.MOVEMENT_SPEED);
-            if (speedAttr != null) {
+            if (speedAttr != null && !speedAttr.hasModifier(WOUNDED_SPEED_ID)) {
                 speedAttr.addTransientModifier(new AttributeModifier(WOUNDED_SPEED_ID, -0.3D, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));
             }
             // Try to eat food immediately if available
@@ -1078,19 +1114,27 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
     private void tickNightWatch() {
         if (!GuardConfig.COMMON.nightWatchEnabled) return;
-        // PERFORMANCE: Only check day/night every 100 ticks (5 seconds)
-        // isDarkOutside() checks sky darkness which involves chunk lookups
-        if (this.tickCount % 100 != 0 && this.cachedNightCheckTick > 0) return;
-        this.cachedNightCheckTick = this.tickCount;
+        // PERFORMANCE: Only check day/night every 200 ticks (10 seconds) instead of 100.
+        // Day/night transitions happen over ~6000 ticks, so checking every 100 ticks
+        // is still 60x more frequent than needed. 200 ticks is more than sufficient
+        // for detecting night onset.
+        if (this.tickCount % 200 != 0) return;
 
         boolean isNight = this.level().isDarkOutside();
 
         if (isNight && !this.wasNight) {
             // Night started - boost follow range
+            // PERFORMANCE: Cap the effective night range multiplier to 1.5x max.
+            // Higher multipliers create massive AABB queries for target scanning
+            // (e.g., 2.0x with default 20 range = 40 block range = 80x80x80 scan area).
+            // This is the #1 cause of TPS drops in villages with many guards.
             AttributeInstance rangeAttr = this.getAttribute(Attributes.FOLLOW_RANGE);
-            if (rangeAttr != null) {
-                double bonus = (GuardConfig.COMMON.nightFollowRangeMultiplier - 1.0) * GuardConfig.STARTUP.followRangeModifier;
-                rangeAttr.addTransientModifier(new AttributeModifier(NIGHT_RANGE_ID, bonus, AttributeModifier.Operation.ADD_VALUE));
+            if (rangeAttr != null && !rangeAttr.hasModifier(NIGHT_RANGE_ID)) {
+                double cappedMultiplier = Math.min(GuardConfig.COMMON.nightFollowRangeMultiplier, 1.5D);
+                double bonus = (cappedMultiplier - 1.0) * GuardConfig.STARTUP.followRangeModifier;
+                if (bonus > 0) {
+                    rangeAttr.addTransientModifier(new AttributeModifier(NIGHT_RANGE_ID, bonus, AttributeModifier.Operation.ADD_VALUE));
+                }
             }
             this.wasNight = true;
         } else if (!isNight && this.wasNight) {

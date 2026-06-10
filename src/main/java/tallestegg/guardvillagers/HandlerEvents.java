@@ -57,6 +57,13 @@ import java.util.function.Predicate;
 public class HandlerEvents {
     private static final Predicate<LivingEntity> ISNT_BABY = mob -> !mob.isBaby();
 
+    // PERFORMANCE: Cooldown map for onMobSetTarget to prevent excessive AABB scans.
+    // Without this, every mob target change triggers a getEntitiesOfClass() scan
+    // which is O(n) and extremely expensive during raids with many mobs.
+    private static final java.util.Map<net.minecraft.world.entity.Mob, Long> targetAlertCooldowns =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+    private static final long ALERT_COOLDOWN_TICKS = 100; // 5 seconds between scans per mob
+
     public static void register() {
         // Events are registered via callbacks in GuardVillagers.onInitialize()
     }
@@ -72,30 +79,48 @@ public class HandlerEvents {
         }
         if (newTarget == null || mob.getType() == GuardEntityType.GUARD || mob instanceof IronGolem) return;
 
-        boolean isVillager = GuardConfig.COMMON.mobsGuardsProtectTargeted.contains(GuardVillagers.getEntityTypeId(newTarget));
+        // PERFORMANCE: Rate-limit this event per mob. During raids, dozens of mobs
+        // change targets rapidly, each triggering an expensive getEntitiesOfClass() scan.
+        // With 10 mobs per second changing targets and 50+ guards in range, this
+        // creates hundreds of AABB queries per second. Cooldown of 5 seconds per mob.
+        long currentTick = mob.level().getGameTime();
+        Long lastAlert = targetAlertCooldowns.get(mob);
+        if (lastAlert != null && currentTick - lastAlert < ALERT_COOLDOWN_TICKS) {
+            return;
+        }
+
+        boolean isVillager = GuardConfig.COMMON.isProtectTargeted(GuardVillagers.getEntityTypeId(newTarget));
         if (isVillager) {
+            // PERFORMANCE: Cap the scan range at 24 blocks (down from default 50).
+            // A 50-block range creates a 100x10x100 block search area which is
+            // catastrophic for performance. 24 blocks is still a large area
+            // (48x10x48 = ~23000 blocks) and sufficient for village defense.
+            double helpRange = Math.min(GuardConfig.COMMON.GuardVillagerHelpRange, 24.0D);
             List<Mob> list = mob.level().getEntitiesOfClass(
                     Mob.class,
-                    mob.getBoundingBox().inflate(
-                            GuardConfig.COMMON.GuardVillagerHelpRange, 5.0D, GuardConfig.COMMON.GuardVillagerHelpRange
-                    )
+                    mob.getBoundingBox().inflate(helpRange, 5.0D, helpRange)
             );
+            // PERFORMANCE: Limit the number of guards we alert per scan to 5.
+            // In large villages, there can be 50+ guards, and setting targets
+            // for all of them simultaneously causes massive AI recalculation.
+            int alerted = 0;
             for (Mob nearbyMob : list) {
+                if (alerted >= 5) break;
                 if (nearbyMob.getType() == GuardEntityType.GUARD || nearbyMob.getType() == EntityType.IRON_GOLEM) {
                     if (nearbyMob.getTeam() != null && mob.getTeam() != null && mob.getTeam().isAlliedTo(nearbyMob.getTeam()))
                         return;
-                    // BUG FIX: Also alert guards that have a stale/distant target, not just null targets.
-                    // Previously only guards with target == null were alerted, which meant guards with
-                    // dead or far-away targets would stand idle instead of helping.
                     LivingEntity currentTarget = nearbyMob.getTarget();
                     boolean needsNewTarget = currentTarget == null
                             || !currentTarget.isAlive()
                             || nearbyMob.distanceTo(currentTarget) > 32.0D;
                     if (needsNewTarget) {
                         nearbyMob.setTarget(mob);
+                        alerted++;
                     }
                 }
             }
+            // Mark this mob as having triggered a recent alert
+            targetAlertCooldowns.put(mob, currentTick);
         }
 
         if (mob instanceof IronGolem golem && newTarget instanceof Guard) {
@@ -182,7 +207,7 @@ public class HandlerEvents {
         if (itemstack.is(GuardVillagerTags.GUARD_CONVERT) && player.isCrouching()) {
             if (target instanceof Villager villager) {
                 if (!villager.isBaby()) {
-                    if (GuardConfig.COMMON.convertibleProfessions.contains(professionId(villager))) {
+                    if (GuardConfig.COMMON.isConvertibleProfession(professionId(villager))) {
                         if (!GuardConfig.COMMON.ConvertVillagerIfHaveHOTV || player.hasEffect(MobEffects.HERO_OF_THE_VILLAGE) && GuardConfig.COMMON.ConvertVillagerIfHaveHOTV) {
                             convertVillager(villager, player);
                             if (!player.getAbilities().instabuild)

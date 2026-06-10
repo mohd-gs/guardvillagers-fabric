@@ -1,5 +1,6 @@
 package tallestegg.guardvillagers.common.entities.ai.goals;
 
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.Goal;
 import tallestegg.guardvillagers.common.entities.Guard;
@@ -22,20 +23,35 @@ public class GuardMountHorseGoal extends Goal {
         if (guard.isVehicle()) return false;
         if (guard.isBaby()) return false;
         if (this.cooldown > 0) { this.cooldown--; return false; }
-        // BUG FIX: Don't try to mount horses while in combat, even if not following.
-        // Previously guards would walk away from fights to mount a horse.
+        // Don't try to mount horses while in combat or following
         if (guard.getTarget() != null) return false;
-        // PERFORMANCE: Only check every 200 ticks (10 seconds) instead of 100
-        if (guard.tickCount % 200 != 0) return false;
+        if (guard.isFollowing()) return false;
+        // PERFORMANCE: Only check every 400 ticks (20 seconds) instead of 200.
+        // Horse mounting is very low priority - guards don't need to check
+        // frequently for available horses.
+        if (guard.tickCount % 400 != 0) return false;
 
         // Search for any rideable entity nearby (horses, donkeys, etc.)
+        // PERFORMANCE: Use a smaller search radius (6 blocks instead of 8) and
+        // check the entity type via EntityType comparison instead of string contains.
         List<LivingEntity> mounts = guard.level().getEntitiesOfClass(
-                LivingEntity.class, guard.getBoundingBox().inflate(8),
-                e -> e.isAlive() && !e.isVehicle() && e.getType().toString().contains("horse") && !(e instanceof net.minecraft.world.entity.player.Player)
+                LivingEntity.class, guard.getBoundingBox().inflate(6),
+                e -> e.isAlive() && !e.isVehicle() && isMountableType(e) && !(e instanceof net.minecraft.world.entity.player.Player)
         );
         if (mounts.isEmpty()) return false;
         this.targetMount = mounts.get(0);
         return true;
+    }
+
+    // PERFORMANCE: Replace string-contains check with proper type check.
+    // The old code used e.getType().toString().contains("horse") which is slow
+    // and imprecise (would match "seahorse" or any modded entity with "horse" in name).
+    private static boolean isMountableType(LivingEntity e) {
+        return e.getType() == EntityType.HORSE
+                || e.getType() == EntityType.DONKEY
+                || e.getType() == EntityType.MULE
+                || e.getType() == EntityType.SKELETON_HORSE
+                || e.getType() == EntityType.ZOMBIE_HORSE;
     }
 
     @Override
@@ -46,7 +62,7 @@ public class GuardMountHorseGoal extends Goal {
     @Override
     public void stop() {
         this.targetMount = null;
-        this.cooldown = 200;
+        this.cooldown = 400; // 20 second cooldown after failing
     }
 
     @Override

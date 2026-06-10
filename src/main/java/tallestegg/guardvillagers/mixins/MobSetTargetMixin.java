@@ -16,8 +16,11 @@ public abstract class MobSetTargetMixin {
     @Inject(method = "setTarget", at = @At("HEAD"))
     private void guardvillagers$onSetTarget(@Nullable LivingEntity target, CallbackInfo ci) {
         Mob mob = (Mob) (Object) this;
-        // Ensure we only run on the server side and the mob is actually added to the world
-        if (!mob.level().isClientSide() && mob.level().getEntity(mob.getUUID()) != null) {
+        // PERFORMANCE: Use isAlive() && !level().isClientSide() instead of
+        // level().getEntity(uuid). The old check called getEntity(UUID) which
+        // iterates entities in the chunk manager — extremely expensive when
+        // called on every setTarget(). isAlive() is O(1) and sufficient.
+        if (!mob.level().isClientSide() && mob.isAlive()) {
             HandlerEvents.onMobSetTarget(mob, target);
         }
     }

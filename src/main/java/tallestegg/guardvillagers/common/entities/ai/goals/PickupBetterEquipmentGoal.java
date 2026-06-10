@@ -23,11 +23,14 @@ public class PickupBetterEquipmentGoal extends Goal {
         if (!GuardConfig.COMMON.autoEquipmentUpgrade) return false;
         if (this.cooldown > 0) { this.cooldown--; return false; }
         if (guard.isBaby()) return false;
-        // BUG FIX: Don't try to pick up equipment while in active combat.
-        // Previously guards would walk towards items instead of fighting.
+        // Don't try to pick up equipment while in active combat.
         if (guard.getTarget() != null && guard.isAggressive()) return false;
-        // PERFORMANCE: Only check every 80 ticks (4 seconds) instead of 40
-        if (guard.tickCount % 80 != 0) return false;
+        // Don't pick up equipment while following (player might be leading them away)
+        if (guard.isFollowing()) return false;
+        // PERFORMANCE: Only check every 120 ticks (6 seconds) instead of 80.
+        // Equipment on the ground doesn't move, so checking less frequently
+        // doesn't risk missing items while saving significant scan overhead.
+        if (guard.tickCount % 120 != 0) return false;
         return true;
     }
 
@@ -38,14 +41,20 @@ public class PickupBetterEquipmentGoal extends Goal {
                 ItemEntity.class, guard.getBoundingBox().inflate(range),
                 ie -> !ie.getItem().isEmpty() && ie.isAlive()
         );
+        // PERFORMANCE: Limit to checking first 5 items to avoid processing
+        // massive item stacks (e.g., after a raid with lots of drops)
+        int checked = 0;
         for (ItemEntity itemEntity : items) {
+            if (checked >= 5) break;
             ItemStack ground = itemEntity.getItem();
             if (tryEquipBetter(ground)) {
                 itemEntity.discard();
-                this.cooldown = 20;
+                this.cooldown = 40; // 2 second cooldown after successful pickup
                 return;
             }
+            checked++;
         }
+        this.cooldown = 40; // Brief cooldown even when nothing was picked up
     }
 
     private boolean tryEquipBetter(ItemStack ground) {

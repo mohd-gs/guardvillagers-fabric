@@ -61,20 +61,41 @@ public class GuardConfig {
         // These are rebuilt whenever the config is loaded or saved.
         private Set<String> mobBlackListSet = new HashSet<>();
         private Set<String> mobWhiteListSet = new HashSet<>();
+        private Set<String> protectTargetedSet = new HashSet<>();
+        private Set<String> protectHurtSet = new HashSet<>();
+        private Set<String> convertibleProfessionsSet = new HashSet<>();
 
         public void rebuildSets() {
             mobBlackListSet = new HashSet<>(MobBlackList);
             mobWhiteListSet = new HashSet<>(MobWhiteList);
+            protectTargetedSet = new HashSet<>(mobsGuardsProtectTargeted);
+            protectHurtSet = new HashSet<>(mobsGuardsProtectHurt);
+            convertibleProfessionsSet = new HashSet<>(convertibleProfessions);
         }
 
-        /** O(1) lookup for blacklist — use instead of MobBlackList.contains() */
+        /** O(1) lookup for blacklist */
         public boolean isBlackListed(String entityId) {
             return mobBlackListSet.contains(entityId);
         }
 
-        /** O(1) lookup for whitelist — use instead of MobWhiteList.contains() */
+        /** O(1) lookup for whitelist */
         public boolean isWhiteListed(String entityId) {
             return mobWhiteListSet.contains(entityId);
+        }
+
+        /** O(1) lookup for protect-targeted list — used in onMobSetTarget which fires VERY frequently */
+        public boolean isProtectTargeted(String entityId) {
+            return protectTargetedSet.contains(entityId);
+        }
+
+        /** O(1) lookup for protect-hurt list */
+        public boolean isProtectHurt(String entityId) {
+            return protectHurtSet.contains(entityId);
+        }
+
+        /** O(1) lookup for convertible professions — used in entity interaction events */
+        public boolean isConvertibleProfession(String professionId) {
+            return convertibleProfessionsSet.contains(professionId);
         }
 
         // Raids and illagers
