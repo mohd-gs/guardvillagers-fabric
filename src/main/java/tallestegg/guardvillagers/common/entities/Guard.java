@@ -87,6 +87,7 @@ import tallestegg.guardvillagers.common.entities.ai.goals.GuardMountHorseGoal;
 import tallestegg.guardvillagers.common.entities.ai.goals.PickupBetterEquipmentGoal;
 import tallestegg.guardvillagers.common.entities.ai.goals.GuardHelpNearbyGuardGoal;
 import tallestegg.guardvillagers.common.entities.ai.goals.GuardShareFoodGoal;
+import tallestegg.guardvillagers.common.entities.ai.goals.GetOutOfWaterGoal;
 import tallestegg.guardvillagers.configuration.GuardConfig;
 import tallestegg.guardvillagers.loot_tables.GuardLootTables;
 import tallestegg.guardvillagers.networking.GuardOpenInventoryPacket;
@@ -376,7 +377,10 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         if (Guard.isConsumable(consumedStack)) {
             FoodProperties food = consumedStack.get(DataComponents.FOOD);
             if (food != null) {
-                this.heal((float) food.nutrition());
+                // Only heal for half the nutrition value since finishUsingItem()
+                // will also apply saturation and other vanilla food effects.
+                // Without this reduction, guards get double-healing (manual heal + vanilla heal).
+                this.heal((float) food.nutrition() * 0.5F);
             }
         }
         // Fabric: Removed EventHooks.onItemUseFinish() - just use finishUsingItem directly
@@ -474,12 +478,37 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
             this.lookAt(target, 90.0F, 90.0F);
         }
         // Feature 2: Berserker bonus damage
+        float berserkerBonus = 0.0F;
+        if (this.isBerserker()) {
+            berserkerBonus = (float) GuardConfig.COMMON.berserkerDamageBonus;
+        }
+        // Feature 3: Combat Stance (War Horn) — damage boost while active
+        float stanceBonus = 0.0F;
+        if (this.isInCombatStance()) {
+            stanceBonus = (float) GuardConfig.COMMON.combatStanceDamageBonus;
+        }
         ItemStack hand = this.getMainHandItem();
         this.damageGuardItem(1, EquipmentSlot.MAINHAND, hand);
         // BUG FIX: Use the target parameter instead of getTarget() to ensure
         // we actually attack the entity that was passed in, not a potentially
         // different or stale target.
+        // Apply berserker + combat stance damage bonus via temporary attribute modifier
+        float totalBonus = berserkerBonus + stanceBonus;
+        if (totalBonus > 0.0F) {
+            AttributeInstance dmgAttr = this.getAttribute(Attributes.ATTACK_DAMAGE);
+            if (dmgAttr != null) {
+                dmgAttr.addTransientModifier(new AttributeModifier(
+                        Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "temp_damage_boost"),
+                        totalBonus, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));
+            }
+        }
         boolean result = super.doHurtTarget((ServerLevel) level(), target);
+        if (totalBonus > 0.0F) {
+            AttributeInstance dmgAttr = this.getAttribute(Attributes.ATTACK_DAMAGE);
+            if (dmgAttr != null) {
+                dmgAttr.removeModifier(Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "temp_damage_boost"));
+            }
+        }
         // Feature 1: Kill counting for leveling
         if (result && target instanceof LivingEntity living && !living.isAlive() && GuardConfig.COMMON.guardLeveling) {
             this.incrementKillCount();
@@ -722,17 +751,13 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         // Feature 10: Share food with wounded guards
         this.goalSelector.addGoal(1, new GuardShareFoodGoal(this));
         this.goalSelector.addGoal(8, new GuardLookAtAndStopMovingWhenBeingTheInteractionTarget(this));
-        if (GuardConfig.COMMON.guardSinkToFightUnderWater) {
-            this.goalSelector.addGoal(10, new FloatGoal(this) {
-                @Override
-                public boolean canUse() {
-                    return super.canUse() && ((Guard.this.getTarget() != null && (Guard.this.getY() - Guard.this.getTarget().getY()) >= GuardConfig.COMMON.depthGuardHuntUnderwater) || Guard.this.getMainHandItem().getItem() instanceof ProjectileWeaponItem || Guard.this.getTarget() == null || Guard.this.getAirSupply() <= 0);
-                }
-            });
-        } else {
-            this.goalSelector.addGoal(10, new FloatGoal(this));
-        }
-        this.targetSelector.addGoal(2, (new HurtByTargetGoal(this, Guard.class, IronGolem.class)).setAlertOthers());
+        // FloatGoal at priority 0 (highest) — same as Pillager, Vindicator, etc.
+        // Guards ALWAYS float on water. They can still fight enemies at the surface
+        // but will never sink and drown. This matches vanilla illager behavior.
+        this.goalSelector.addGoal(0, new FloatGoal(this));
+        // Get out of water when idle — move toward land
+        this.goalSelector.addGoal(5, new GetOutOfWaterGoal(this, 0.6D));
+        this.targetSelector.addGoal(2, (new HurtByTargetGoal(this, IronGolem.class)).setAlertOthers());
         this.targetSelector.addGoal(3, new HeroHurtByTargetGoal(this));
         this.targetSelector.addGoal(3, new HeroHurtTargetGoal(this));
         this.targetSelector.addGoal(5, new DefendVillageGuardGoal(this));
@@ -772,7 +797,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
             double d1 = target.getY(0.3333333333333333D) - abstractarrowentity.getY();
             double d2 = target.getZ() - this.getZ();
             double d3 = Mth.sqrt((float) (d0 * d0 + d2 * d2));
-            abstractarrowentity.shoot(d0, d1 + d3 * (double) 0.2F, d2, 1.6F, 0.0F);
+            abstractarrowentity.shoot(d0, d1 + d3 * (double) 0.2F, d2, 1.6F, 8.0F);
             this.playSound(SoundEvents.ARROW_SHOOT, 1.0F, 1.0F / (this.getRandom().nextFloat() * 0.4F + 0.8F));
             this.level().addFreshEntity(abstractarrowentity);
             this.damageGuardItem(1, EquipmentSlot.MAINHAND, hand);
@@ -1495,7 +1520,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
                     // Still look at target and maintain distance
                     guard.getLookControl().setLookAt(target, 30.0F, 30.0F);
                     guard.lookAt(target, 30.0F, 30.0F);
-                    if (distance > (double) this.attackRadiusSqr) {
+                    if (distanceSq > (double) this.attackRadiusSqr) {
                         guard.getNavigation().moveTo(target, this.speedModifier);
                     } else {
                         guard.getNavigation().stop();
@@ -1828,6 +1853,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
         @Override
         public void stop() {
+            this.guardtofollow = null;
             this.taskOwner.getNavigation().stop();
             super.stop();
         }
@@ -1860,7 +1886,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
         @Override
         public boolean canUse() {
-            return this.isValidTarget() && this.isHoldingCrossbow();
+            return this.isValidTarget() && this.isHoldingCrossbow() && !this.mob.isEating();
         }
 
         private boolean isHoldingCrossbow() {
@@ -2199,7 +2225,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         private final double speed;
         private long delayTime = 0L;
         private int ticksRan = 0;
-        private boolean stop = false;
+        private boolean shouldStop = false;
 
         public WalkBackToCheckPointGoal(Guard guard, double speedIn) {
             this.guard = guard;
@@ -2214,7 +2240,8 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
         @Override
         public boolean canContinueToUse() {
-            return this.canUse() && !this.guard.getNavigation().isDone() && stop;
+            // Continue as long as we haven't been told to stop and still have a path
+            return !this.shouldStop && !this.guard.getNavigation().isDone() && this.guard.getPatrolPos() != null;
         }
 
         @Override
@@ -2232,14 +2259,14 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
             if (this.guard.getNavigation().getPath() != null && !this.guard.getNavigation().getPath().canReach())
                 this.ticksRan++;
             if (this.guard.getNavigation().getPath() != null && !this.guard.getNavigation().getPath().canReach() && !this.guard.blockPosition().equals(this.guard.getPatrolPos()) && ticksRan > 200)
-                this.stop = true;
+                this.shouldStop = true;
         }
 
         @Override
         public void stop() {
-            if (stop) this.delayTime = this.guard.level().getGameTime();
+            if (shouldStop) this.delayTime = this.guard.level().getGameTime();
             this.guard.getNavigation().stop();
-            this.stop = false;
+            this.shouldStop = false;
         }
 
         @Override

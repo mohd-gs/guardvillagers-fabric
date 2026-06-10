@@ -176,6 +176,7 @@ public class GuardConfig {
         // War Horn
         public double warHornRange = 128.0;
         public int warHornCombatDurationSeconds = 30;
+        public double combatStanceDamageBonus = 0.3;
 
         // Enhanced Mount System
         public boolean guardsAutoMountHorses = true;
@@ -258,6 +259,7 @@ public class GuardConfig {
             berserkerDamageBonus = getDoubleSafe(obj, "berserkerDamageBonus", berserkerDamageBonus);
             warHornRange = getDoubleSafe(obj, "warHornRange", warHornRange);
             warHornCombatDurationSeconds = getIntSafe(obj, "warHornCombatDurationSeconds", warHornCombatDurationSeconds);
+            combatStanceDamageBonus = getDoubleSafe(obj, "combatStanceDamageBonus", combatStanceDamageBonus);
             guardsAutoMountHorses = getBoolSafe(obj, "guardsAutoMountHorses", guardsAutoMountHorses);
             mountedKnockbackBonus = getDoubleSafe(obj, "mountedKnockbackBonus", mountedKnockbackBonus);
             woundedBehavior = getBoolSafe(obj, "woundedBehavior", woundedBehavior);
@@ -334,6 +336,7 @@ public class GuardConfig {
             obj.addProperty("berserkerDamageBonus", berserkerDamageBonus);
             obj.addProperty("warHornRange", warHornRange);
             obj.addProperty("warHornCombatDurationSeconds", warHornCombatDurationSeconds);
+            obj.addProperty("combatStanceDamageBonus", combatStanceDamageBonus);
             obj.addProperty("guardsAutoMountHorses", guardsAutoMountHorses);
             obj.addProperty("mountedKnockbackBonus", mountedKnockbackBonus);
             obj.addProperty("woundedBehavior", woundedBehavior);

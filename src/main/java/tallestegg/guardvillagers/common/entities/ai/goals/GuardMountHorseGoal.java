@@ -6,6 +6,7 @@ import net.minecraft.world.entity.ai.goal.Goal;
 import tallestegg.guardvillagers.common.entities.Guard;
 import tallestegg.guardvillagers.configuration.GuardConfig;
 
+import java.util.EnumSet;
 import java.util.List;
 
 public class GuardMountHorseGoal extends Goal {
@@ -15,6 +16,7 @@ public class GuardMountHorseGoal extends Goal {
 
     public GuardMountHorseGoal(Guard guard) {
         this.guard = guard;
+        this.setFlags(EnumSet.of(Goal.Flag.MOVE));
     }
 
     @Override
