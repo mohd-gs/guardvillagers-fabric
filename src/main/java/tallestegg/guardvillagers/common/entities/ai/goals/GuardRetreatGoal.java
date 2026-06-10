@@ -3,6 +3,7 @@ package tallestegg.guardvillagers.common.entities.ai.goals;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.util.DefaultRandomPos;
+import net.minecraft.world.item.BowItem;
 import net.minecraft.world.phys.Vec3;
 import tallestegg.guardvillagers.common.entities.Guard;
 import tallestegg.guardvillagers.configuration.GuardConfig;
@@ -18,18 +19,25 @@ public class GuardRetreatGoal extends Goal {
     public boolean canUse() {
         if (!GuardConfig.COMMON.weaponSpecialization) return false;
         if (!guard.isHoldingRangedWeapon()) return false;
+        // Bow guards handle retreat within GuardBowAttack (kiting while shooting).
+        // This goal handles retreat for crossbow and trident guards only.
+        if (guard.getMainHandItem().getItem() instanceof BowItem) return false;
         // Don't retreat if wounded - the wounded behavior handles retreat separately
         if (guard.isWounded()) return false;
         LivingEntity target = guard.getTarget();
         if (target == null) return false;
-        // PERFORMANCE: Only check distance every 5 ticks
-        if (guard.tickCount % 5 != 0) return false;
+        // PERFORMANCE: Only check distance every 10 ticks
+        if (guard.tickCount % 10 != 0) return false;
         return guard.distanceTo(target) < GuardConfig.COMMON.archerRetreatDistance;
     }
 
     @Override
     public boolean canContinueToUse() {
-        return canUse();
+        LivingEntity target = guard.getTarget();
+        if (target == null) return false;
+        if (!guard.isHoldingRangedWeapon()) return false;
+        // Continue retreating until we're at a safe distance (1.5x the retreat threshold)
+        return guard.distanceTo(target) < GuardConfig.COMMON.archerRetreatDistance * 1.5D;
     }
 
     @Override

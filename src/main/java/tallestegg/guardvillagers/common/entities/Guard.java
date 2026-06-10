@@ -152,6 +152,13 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
     private LivingEntity cachedOwner = null;
     private static final int OWNER_CACHE_INTERVAL = 100; // ticks
 
+    // Friendly fire check cache - prevents archer freeze bug where guards
+    // repeatedly draw and cancel their bow shots when a friendly is in line of sight.
+    // Previously, friendlyInLineOfSight() returned false on non-check ticks,
+    // causing the bow goal to immediately re-draw after being stopped.
+    private boolean cachedFriendlyInSight = false;
+    private int cachedFriendlyCheckTick = -1;
+
     // Attribute modifiers for leveling
     private static final Identifier RANK_HEALTH_ID = Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "rank_health_bonus");
     private static final Identifier RANK_DAMAGE_ID = Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "rank_damage_bonus");
@@ -1420,6 +1427,11 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         private final float attackRadiusSqr;
         private int attackInterval;
         private float attackRadius;
+        // BUG FIX: Cooldown after stopping bow due to friendly fire.
+        // Without this, the guard would stop drawing (friendlyInLineOfSight=true)
+        // and immediately re-draw on the next tick (friendlyInLineOfSight=false
+        // on non-check ticks), creating an infinite draw-cancel cycle.
+        private int friendlyFireCooldown = 0;
 
         public GuardBowAttack(Guard mob, double speedModifier, int attackIntervalMin, float attackRadius) {
             this.guard = mob;
@@ -1455,6 +1467,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
             super.stop();
             this.guard.stopUsingItem();
             this.guard.setAggressive(false);
+            this.friendlyFireCooldown = 0;
         }
 
         @Override
@@ -1467,18 +1480,37 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
             LivingEntity target = guard.getTarget();
             if (target != null) {
                 double distanceSq = guard.distanceToSqr(target);
+                double distance = Math.sqrt(distanceSq);
                 boolean canSee = guard.getSensing().hasLineOfSight(target);
-                boolean isUsing = guard.isUsingItem();
 
-                if (canSee && isUsing) {
-                    if (distanceSq <= (double) this.attackRadiusSqr && this.attackInterval > 0) {
-                        --this.attackInterval;
+                // Handle friendly fire cooldown: don't draw the bow while waiting
+                if (this.friendlyFireCooldown > 0) {
+                    this.friendlyFireCooldown--;
+                    if (guard.isUsingItem()) {
+                        guard.stopUsingItem();
                     }
-                } else if (canSee && !isUsing && distanceSq <= (double) this.attackRadiusSqr) {
-                    guard.startUsingItem(ProjectileUtil.getWeaponHoldingHand(guard, Items.BOW));
+                    // Still look at target and maintain distance
+                    guard.getLookControl().setLookAt(target, 30.0F, 30.0F);
+                    guard.lookAt(target, 30.0F, 30.0F);
+                    if (distance > (double) this.attackRadiusSqr) {
+                        guard.getNavigation().moveTo(target, this.speedModifier);
+                    } else {
+                        guard.getNavigation().stop();
+                    }
+                    return;
                 }
 
-                if (distanceSq > (double) this.attackRadiusSqr) {
+                // Retreat behavior: if target is too close, move away (kiting)
+                boolean tooClose = distance < GuardConfig.COMMON.archerRetreatDistance
+                        && GuardConfig.COMMON.weaponSpecialization
+                        && !guard.isWounded();
+
+                if (tooClose && !guard.isPatrolling()) {
+                    Vec3 away = DefaultRandomPos.getPosAway(guard, 8, 4, target.position());
+                    if (away != null) {
+                        guard.getNavigation().moveTo(away.x, away.y, away.z, 1.2D);
+                    }
+                } else if (distanceSq > (double) this.attackRadiusSqr) {
                     guard.getNavigation().moveTo(target, this.speedModifier);
                 } else {
                     guard.getNavigation().stop();
@@ -1486,6 +1518,16 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
                 guard.getLookControl().setLookAt(target, 30.0F, 30.0F);
                 guard.lookAt(target, 30.0F, 30.0F);
+
+                // Bow drawing and shooting logic
+                boolean isUsing = guard.isUsingItem();
+                if (canSee && isUsing) {
+                    if (distanceSq <= (double) this.attackRadiusSqr && this.attackInterval > 0) {
+                        --this.attackInterval;
+                    }
+                } else if (canSee && !isUsing && distanceSq <= (double) this.attackRadiusSqr) {
+                    guard.startUsingItem(ProjectileUtil.getWeaponHoldingHand(guard, Items.BOW));
+                }
 
                 if (guard.isUsingItem()) {
                     int useTicks = guard.getTicksUsingItem();
@@ -1503,8 +1545,12 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
                 guard.getNavigation().stop();
                 guard.getMoveControl().strafe(0.0F, 0.0F);
             }
-            if (RangedCrossbowAttackPassiveGoal.friendlyInLineOfSight(guard)) {
-                this.guard.stopUsingItem();
+
+            // Check for friendly in line of sight (cached, persists across ticks)
+            if (this.friendlyFireCooldown <= 0 && RangedCrossbowAttackPassiveGoal.friendlyInLineOfSight(guard)) {
+                guard.stopUsingItem();
+                this.friendlyFireCooldown = 40; // 2 second cooldown before re-drawing
+                this.attackInterval = this.attackIntervalMin; // Reset attack interval
             }
         }
     }
@@ -1928,21 +1974,42 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         }
 
         public static boolean friendlyInLineOfSight(Mob mob) {
-            // PERFORMANCE: Only check every 5 ticks instead of every tick.
-            // This is called from multiple goals and is very expensive.
-            if (mob.tickCount % 5 != 0) return false;
+            // PERFORMANCE: Only perform the expensive entity scan every 5 ticks.
+            // BUG FIX: On non-check ticks, return the CACHED result instead of false.
+            // Previously, returning false on non-check ticks caused archers to
+            // repeatedly draw and cancel their bows — the bow goal saw "no friendly"
+            // on 4/5 ticks and started drawing, only to be cancelled again on check ticks.
+            if (mob instanceof Guard guardMob) {
+                // Use per-guard cache to persist results across ticks
+                if (mob.tickCount % 5 != 0) {
+                    return guardMob.cachedFriendlyInSight;
+                }
+            } else {
+                // Fallback for non-Guard mobs (shouldn't happen, but safe)
+                if (mob.tickCount % 5 != 0) return false;
+            }
+            // Actual check
+            boolean result = checkFriendlyInLineOfSight(mob);
+            if (mob instanceof Guard guardMob) {
+                guardMob.cachedFriendlyInSight = result;
+                guardMob.cachedFriendlyCheckTick = mob.tickCount;
+            }
+            return result;
+        }
+
+        private static boolean checkFriendlyInLineOfSight(Mob mob) {
             Vec3 lookAngle = mob.getViewVector(1.0F);
             AABB aabb = mob.getBoundingBox().expandTowards(lookAngle.scale(6.0D)).inflate(1.0, 1.0, 1.0);
             List<Entity> list = mob.level().getEntities(mob, aabb);
-            for (Entity guard : list) {
-                if (guard != mob.getTarget()) {
-                    boolean isOwner = mob instanceof Guard guardMob && guardMob.getOwner() == guard;
-                    boolean isVillager = isOwner || guard.getType() == EntityType.VILLAGER || guard.getType() == GuardEntityType.GUARD || guard.getType() == EntityType.IRON_GOLEM;
+            for (Entity entity : list) {
+                if (entity != mob.getTarget()) {
+                    boolean isOwner = mob instanceof Guard guardMob && guardMob.getOwner() == entity;
+                    boolean isVillager = isOwner || entity.getType() == EntityType.VILLAGER || entity.getType() == GuardEntityType.GUARD || entity.getType() == EntityType.IRON_GOLEM;
                     if (isVillager) {
                         Vec3 vector3d = mob.getLookAngle();
-                        Vec3 vector3d1 = guard.position().vectorTo(mob.position()).normalize();
+                        Vec3 vector3d1 = entity.position().vectorTo(mob.position()).normalize();
                         vector3d1 = new Vec3(vector3d1.x, vector3d1.y, vector3d1.z);
-                        if (vector3d1.dot(vector3d) < GuardConfig.COMMON.friendlyFireCheckValue && mob.hasLineOfSight(guard))
+                        if (vector3d1.dot(vector3d) < GuardConfig.COMMON.friendlyFireCheckValue && mob.hasLineOfSight(entity))
                             return GuardConfig.COMMON.FriendlyFire;
                     }
                 }
