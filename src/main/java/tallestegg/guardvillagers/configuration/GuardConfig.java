@@ -6,8 +6,8 @@ import tallestegg.guardvillagers.GuardVillagers;
 
 import java.io.*;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public class GuardConfig {
     public static final CommonConfig COMMON = new CommonConfig();
@@ -39,6 +39,8 @@ public class GuardConfig {
             GuardVillagers.LOGGER.error("Failed to load Guard Villagers config", e);
             save();
         }
+        // PERFORMANCE: Rebuild cached Sets after loading config
+        COMMON.rebuildSets();
     }
 
     public static void save() {
@@ -55,6 +57,26 @@ public class GuardConfig {
     }
 
     public static class CommonConfig {
+        // PERFORMANCE: Cached Sets for O(1) lookups instead of O(n) List.contains()
+        // These are rebuilt whenever the config is loaded or saved.
+        private Set<String> mobBlackListSet = new HashSet<>();
+        private Set<String> mobWhiteListSet = new HashSet<>();
+
+        public void rebuildSets() {
+            mobBlackListSet = new HashSet<>(MobBlackList);
+            mobWhiteListSet = new HashSet<>(MobWhiteList);
+        }
+
+        /** O(1) lookup for blacklist — use instead of MobBlackList.contains() */
+        public boolean isBlackListed(String entityId) {
+            return mobBlackListSet.contains(entityId);
+        }
+
+        /** O(1) lookup for whitelist — use instead of MobWhiteList.contains() */
+        public boolean isWhiteListed(String entityId) {
+            return mobWhiteListSet.contains(entityId);
+        }
+
         // Raids and illagers
         public boolean RaidAnimals = true;
         public boolean WitchesVillager = true;

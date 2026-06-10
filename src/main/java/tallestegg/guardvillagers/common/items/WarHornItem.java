@@ -40,7 +40,7 @@ public class WarHornItem extends Item {
         LivingEntity nearestEnemy = null;
         double nearestDist = Double.MAX_VALUE;
         for (Mob mob : level.getEntitiesOfClass(Mob.class, enemySearchBox)) {
-            if (mob instanceof Enemy && mob.isAlive() && !GuardConfig.COMMON.MobBlackList.contains(GuardVillagers.getEntityTypeId(mob))) {
+            if (mob instanceof Enemy && mob.isAlive() && !GuardConfig.COMMON.isBlackListed(GuardVillagers.getEntityTypeId(mob))) {
                 double d = player.distanceToSqr(mob);
                 if (d < nearestDist) {
                     nearestDist = d;

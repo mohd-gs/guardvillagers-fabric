@@ -115,7 +115,7 @@ public class HandlerEvents {
             }
 
             if (GuardConfig.COMMON.MobsAttackGuards) {
-                if (mob instanceof Enemy && !GuardConfig.COMMON.MobBlackList.contains(GuardVillagers.getEntityTypeId(mob))) {
+                if (mob instanceof Enemy && !GuardConfig.COMMON.isBlackListed(GuardVillagers.getEntityTypeId(mob))) {
                     if (!(mob instanceof Spider))
                         mob.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(mob, Guard.class, false));
                     else

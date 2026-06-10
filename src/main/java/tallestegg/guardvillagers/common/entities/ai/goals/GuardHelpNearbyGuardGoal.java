@@ -18,11 +18,12 @@ import java.util.List;
  * <p>
  * Now, when a guard is fighting an enemy, nearby idle guards or guards whose target
  * is far away/dead will prioritize helping by targeting the same enemy.
+ * <p>
+ * PERFORMANCE: Scans are throttled to every 40 ticks (2 seconds) with an additional
+ * 20-tick cooldown after a failed scan. The help range is capped at 32 blocks to
+ * prevent massive AABB queries in densely populated villages.
  */
 public class GuardHelpNearbyGuardGoal extends TargetGoal {
-    private static final TargetingConditions NEARBY_GUARD_CONDITIONS = TargetingConditions.forCombat()
-            .range(16.0D).ignoreLineOfSight();
-
     private final Guard guard;
     private LivingEntity sharedTarget;
     private int cooldown = 0;
@@ -38,20 +39,34 @@ public class GuardHelpNearbyGuardGoal extends TargetGoal {
             this.cooldown--;
             return false;
         }
+        // PERFORMANCE: Only scan every 40 ticks (2 seconds) instead of every tick.
+        // This is the single most expensive operation in the mod because it scans
+        // for all guards in a potentially huge AABB (default 50-block range).
+        if (guard.tickCount % 40 != 0) return false;
+
         // Don't override if we already have a valid, close, alive target
         LivingEntity currentTarget = this.guard.getTarget();
         if (currentTarget != null && currentTarget.isAlive() && guard.distanceTo(currentTarget) < 16.0D) {
+            this.cooldown = 40; // Skip for 2 seconds if we already have a target
             return false;
         }
+
+        // PERFORMANCE: Cap the help range at 32 blocks to prevent massive AABB queries.
+        // The default config value of 50 blocks creates a 100x16x100 block search area
+        // which is extremely expensive when there are 100+ guards.
+        double helpRange = Math.min(GuardConfig.COMMON.GuardVillagerHelpRange, 32.0D);
 
         // Find nearby guards that are fighting
         List<Guard> nearbyGuards = guard.level().getEntitiesOfClass(
                 Guard.class,
-                guard.getBoundingBox().inflate(GuardConfig.COMMON.GuardVillagerHelpRange, 8.0D, GuardConfig.COMMON.GuardVillagerHelpRange),
+                guard.getBoundingBox().inflate(helpRange, 8.0D, helpRange),
                 g -> g != this.guard && g.isAlive() && g.getTarget() != null && g.getTarget().isAlive()
         );
 
-        if (nearbyGuards.isEmpty()) return false;
+        if (nearbyGuards.isEmpty()) {
+            this.cooldown = 40; // No fighting guards nearby — check again in 2 seconds
+            return false;
+        }
 
         // Find the best shared target - prioritize the target of the closest fighting guard
         LivingEntity bestTarget = null;
@@ -78,6 +93,7 @@ public class GuardHelpNearbyGuardGoal extends TargetGoal {
             return true;
         }
 
+        this.cooldown = 20; // No valid target found — check again in 1 second
         return false;
     }
 

@@ -25,7 +25,8 @@ public class GuardMountHorseGoal extends Goal {
         // BUG FIX: Don't try to mount horses while in combat, even if not following.
         // Previously guards would walk away from fights to mount a horse.
         if (guard.getTarget() != null) return false;
-        if (guard.tickCount % 100 != 0) return false;
+        // PERFORMANCE: Only check every 200 ticks (10 seconds) instead of 100
+        if (guard.tickCount % 200 != 0) return false;
 
         // Search for any rideable entity nearby (horses, donkeys, etc.)
         List<LivingEntity> mounts = guard.level().getEntitiesOfClass(

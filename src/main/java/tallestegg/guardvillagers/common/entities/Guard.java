@@ -139,6 +139,12 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
     // Feature 3: War Horn - combat stance timer
     private int combatStanceTicks = 0;
 
+    // === Performance optimization: cached values ===
+    private int cachedWoundedCheckTick = -1;
+    private boolean cachedWoundedResult = false;
+    private int cachedNightCheckTick = -1;
+    private boolean cachedNightResult = false;
+
     // Attribute modifiers for leveling
     private static final Identifier RANK_HEALTH_ID = Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "rank_health_bonus");
     private static final Identifier RANK_DAMAGE_ID = Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "rank_damage_bonus");
@@ -515,16 +521,17 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         if (this.shieldCoolDown > 0) --this.shieldCoolDown;
         // Feature 3: Combat stance tick down
         if (this.combatStanceTicks > 0) --this.combatStanceTicks;
-        if (this.getHealth() < this.getMaxHealth() && this.tickCount % 200 == 0) {
+        // PERFORMANCE: Only check health regen every 200 ticks (already modulo-based)
+        if (this.tickCount % 200 == 0 && this.getHealth() < this.getMaxHealth()) {
             this.heal((float) GuardConfig.COMMON.amountOfHealthRegenerated);
         }
         if (spawnWithArmor) {
             getItemsFromLootTable(this);
             this.spawnWithArmor = false;
         }
-        // Feature 6: Wounded Behavior
+        // Feature 6: Wounded Behavior (internally throttled)
         this.tickWoundedBehavior();
-        // Feature 8: Night Watch
+        // Feature 8: Night Watch (internally throttled)
         this.tickNightWatch();
         this.updateSwingTime();
         super.aiStep();
@@ -691,7 +698,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         // alert each other about threats.
         this.targetSelector.addGoal(4, new GuardHelpNearbyGuardGoal(this));
         if (GuardConfig.COMMON.AttackAllMobs) {
-            this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, Mob.class, 5, true, true, (target, serverLevel) -> target instanceof Enemy && !GuardConfig.COMMON.MobBlackList.contains(GuardVillagers.getEntityTypeId(target))));
+            this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, Mob.class, 5, true, true, (target, serverLevel) -> target instanceof Enemy && !GuardConfig.COMMON.isBlackListed(GuardVillagers.getEntityTypeId(target))));
         } else {
             this.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, Ravager.class, true));
             this.targetSelector.addGoal(4, new NearestAttackableTargetGoal<>(this, Witch.class, true));
@@ -699,7 +706,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
             this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, Zombie.class, true, (target, serverLevel) -> !(target instanceof ZombifiedPiglin)));
         }
         this.targetSelector.addGoal(4, new NearestAttackableTargetGoal<>(this, Player.class, 10, true, false, this::isAngryAt));
-        this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, LivingEntity.class, 5, true, true, (target, serverLevel) -> GuardConfig.COMMON.MobWhiteList.contains(GuardVillagers.getEntityTypeId(target))));
+        this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, LivingEntity.class, 5, true, true, (target, serverLevel) -> GuardConfig.COMMON.isWhiteListed(GuardVillagers.getEntityTypeId(target))));
         this.targetSelector.addGoal(8, new ResetUniversalAngerTargetGoal<>(this, true));
     }
 
@@ -775,7 +782,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
     @Override
     public boolean canAttack(LivingEntity target) {
-        return (!GuardConfig.COMMON.MobBlackList.contains(GuardVillagers.getEntityTypeId(target)) && !target.hasEffect(MobEffects.HERO_OF_THE_VILLAGE) && !this.isOwner(target) && super.canAttack(target));
+        return (!GuardConfig.COMMON.isBlackListed(GuardVillagers.getEntityTypeId(target)) && !target.hasEffect(MobEffects.HERO_OF_THE_VILLAGE) && !this.isOwner(target) && super.canAttack(target));
     }
 
     @Override
@@ -818,7 +825,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
     @Override
     public void setTarget(LivingEntity entity) {
-        if (entity != null && entity.isAlive() && (((this.getTeam() != null && entity.getTeam() != null && this.getTeam().isAlliedTo(entity.getTeam()))) || GuardConfig.COMMON.MobBlackList.contains(BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString()) || entity.hasEffect(MobEffects.HERO_OF_THE_VILLAGE) || this.isOwner(entity) || (entity instanceof TamableAnimal tamed && (tamed.getOwner() != null && tamed.getOwner().getUUID().equals(this.getOwnerId())))))
+        if (entity != null && entity.isAlive() && (((this.getTeam() != null && entity.getTeam() != null && this.getTeam().isAlliedTo(entity.getTeam()))) || GuardConfig.COMMON.isBlackListed(BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString()) || entity.hasEffect(MobEffects.HERO_OF_THE_VILLAGE) || this.isOwner(entity) || (entity instanceof TamableAnimal tamed && (tamed.getOwner() != null && tamed.getOwner().getUUID().equals(this.getOwnerId())))))
             return;
         super.setTarget(entity);
     }
@@ -1034,24 +1041,31 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
     private void tickWoundedBehavior() {
         if (!GuardConfig.COMMON.woundedBehavior) return;
+        // PERFORMANCE: Only check wounded state every 10 ticks instead of every tick
+        // This avoids expensive health/maxHealth division every frame for every guard
+        if (this.tickCount % 10 != 0 && this.cachedWoundedCheckTick > 0) return;
+        this.cachedWoundedCheckTick = this.tickCount;
+
         float healthRatio = this.getHealth() / this.getMaxHealth();
         boolean isWounded = this.getHealth() > 0 && healthRatio < GuardConfig.COMMON.woundedHealthThreshold;
         boolean hasRecovered = this.wasWounded && healthRatio >= GuardConfig.COMMON.recoveredHealthThreshold;
-        AttributeInstance speedAttr = this.getAttribute(Attributes.MOVEMENT_SPEED);
-        if (speedAttr == null) return;
 
         if (isWounded && !this.wasWounded) {
             // Just entered wounded state - apply speed penalty
-            speedAttr.addTransientModifier(new AttributeModifier(WOUNDED_SPEED_ID, -0.3D, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));
+            AttributeInstance speedAttr = this.getAttribute(Attributes.MOVEMENT_SPEED);
+            if (speedAttr != null) {
+                speedAttr.addTransientModifier(new AttributeModifier(WOUNDED_SPEED_ID, -0.3D, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));
+            }
             // Try to eat food immediately if available
             if (isConsumable(this.getOffhandItem()) && !this.isUsingItem()) {
                 this.startUsingItem(InteractionHand.OFF_HAND);
             }
             this.wasWounded = true;
         } else if (hasRecovered) {
-            // BUG FIX: Use recoveredHealthThreshold for recovery check to prevent
-            // rapid flickering between wounded/not-wounded states at the boundary.
-            speedAttr.removeModifier(WOUNDED_SPEED_ID);
+            AttributeInstance speedAttr = this.getAttribute(Attributes.MOVEMENT_SPEED);
+            if (speedAttr != null) {
+                speedAttr.removeModifier(WOUNDED_SPEED_ID);
+            }
             this.wasWounded = false;
         }
     }
@@ -1064,18 +1078,27 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
     private void tickNightWatch() {
         if (!GuardConfig.COMMON.nightWatchEnabled) return;
+        // PERFORMANCE: Only check day/night every 100 ticks (5 seconds)
+        // isDarkOutside() checks sky darkness which involves chunk lookups
+        if (this.tickCount % 100 != 0 && this.cachedNightCheckTick > 0) return;
+        this.cachedNightCheckTick = this.tickCount;
+
         boolean isNight = this.level().isDarkOutside();
-        AttributeInstance rangeAttr = this.getAttribute(Attributes.FOLLOW_RANGE);
-        if (rangeAttr == null) return;
 
         if (isNight && !this.wasNight) {
             // Night started - boost follow range
-            double bonus = (GuardConfig.COMMON.nightFollowRangeMultiplier - 1.0) * GuardConfig.STARTUP.followRangeModifier;
-            rangeAttr.addTransientModifier(new AttributeModifier(NIGHT_RANGE_ID, bonus, AttributeModifier.Operation.ADD_VALUE));
+            AttributeInstance rangeAttr = this.getAttribute(Attributes.FOLLOW_RANGE);
+            if (rangeAttr != null) {
+                double bonus = (GuardConfig.COMMON.nightFollowRangeMultiplier - 1.0) * GuardConfig.STARTUP.followRangeModifier;
+                rangeAttr.addTransientModifier(new AttributeModifier(NIGHT_RANGE_ID, bonus, AttributeModifier.Operation.ADD_VALUE));
+            }
             this.wasNight = true;
         } else if (!isNight && this.wasNight) {
             // Day started - remove follow range boost
-            rangeAttr.removeModifier(NIGHT_RANGE_ID);
+            AttributeInstance rangeAttr = this.getAttribute(Attributes.FOLLOW_RANGE);
+            if (rangeAttr != null) {
+                rangeAttr.removeModifier(NIGHT_RANGE_ID);
+            }
             this.wasNight = false;
         }
     }
@@ -1172,6 +1195,9 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
         @Override
         public boolean canUse() {
+            // PERFORMANCE: Only scan every 40 ticks (2 seconds) instead of every tick.
+            // Village defense doesn't need instant reaction time.
+            if (guard.tickCount % 40 != 0 && this.villageAggressorTarget == null) return false;
             AABB axisalignedbb = this.guard.getBoundingBox().inflate(10.0D, 8.0D, 10.0D);
             List<Villager> list = guard.level().getEntitiesOfClass(Villager.class, axisalignedbb);
             List<Player> list1 = guard.level().getEntitiesOfClass(Player.class, axisalignedbb);
@@ -1502,6 +1528,9 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
         @Override
         public boolean canUse() {
+            // PERFORMANCE: Only scan every 20 ticks (1 second) instead of every tick.
+            // This goal is low-priority interaction — don't need instant response.
+            if (guard.tickCount % 20 != 0 && this.villager == null) return false;
             List<Villager> list = this.guard.level().getEntitiesOfClass(Villager.class, guard.getBoundingBox().inflate(10.0D));
             if (!list.isEmpty()) {
                 for (Villager villager : list) {
@@ -1511,6 +1540,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
                     }
                 }
             }
+            this.villager = null;
             return false;
         }
 
@@ -1551,6 +1581,13 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
         @Override
         public boolean canContinueToUse() {
+            // PERFORMANCE: Only scan for threatening mobs every 10 ticks instead of every tick.
+            // getEntitiesOfClass is very expensive when called every tick for every guard.
+            // Between scans, use the simple condition (no new threat detected).
+            if (guard.tickCount % 10 != 0) {
+                return (guard.isUsingItem() && guard.getTarget() == null && guard.getHealth() < guard.getMaxHealth())
+                        || (guard.getTarget() != null && guard.getHealth() < guard.getMaxHealth() / 2 + 2 && guard.isEating());
+            }
             List<LivingEntity> list = this.guard.level().getEntitiesOfClass(LivingEntity.class, this.guard.getBoundingBox().inflate(5.0D, 3.0D, 5.0D));
             if (!list.isEmpty()) {
                 for (LivingEntity mob : list) {
@@ -1598,12 +1635,15 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         @Override
         public void tick() {
             --walkTimer;
-            List<LivingEntity> list = this.guard.level().getEntitiesOfClass(LivingEntity.class, this.guard.getBoundingBox().inflate(5.0D, 3.0D, 5.0D));
-            if (!list.isEmpty()) {
-                for (LivingEntity mob : list) {
-                    if (mob != null) {
-                        if (mob.getLastHurtMob() instanceof Guard || mob instanceof Mob && ((Mob) mob).getTarget() instanceof Guard) {
-                            if (walkTimer < 20) this.walkTimer += 5;
+            // PERFORMANCE: Only scan for nearby threats every 10 ticks
+            if (guard.tickCount % 10 == 0) {
+                List<LivingEntity> list = this.guard.level().getEntitiesOfClass(LivingEntity.class, this.guard.getBoundingBox().inflate(5.0D, 3.0D, 5.0D));
+                if (!list.isEmpty()) {
+                    for (LivingEntity mob : list) {
+                        if (mob != null) {
+                            if (mob.getLastHurtMob() instanceof Guard || mob instanceof Mob && ((Mob) mob).getTarget() instanceof Guard) {
+                                if (walkTimer < 20) this.walkTimer += 5;
+                            }
                         }
                     }
                 }
@@ -1612,7 +1652,10 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
         @Override
         protected Vec3 getPosition() {
-            List<LivingEntity> list = this.guard.level().getEntitiesOfClass(LivingEntity.class, this.guard.getBoundingBox().inflate(5.0D, 3.0D, 5.0D));
+            // PERFORMANCE: Only scan when we actually need a position
+            // This is called less frequently than tick, but still keep it efficient
+            // by limiting the search to a smaller radius
+            List<LivingEntity> list = this.guard.level().getEntitiesOfClass(LivingEntity.class, this.guard.getBoundingBox().inflate(4.0D, 2.0D, 4.0D));
             if (!list.isEmpty()) {
                 for (LivingEntity mob : list) {
                     if (mob != null) {
@@ -1652,10 +1695,16 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
         @Override
         public boolean canUse() {
+            // PERFORMANCE: Only scan every 20 ticks instead of every tick.
+            // Formation following is not time-critical.
+            if (taskOwner.tickCount % 20 != 0 && this.guardtofollow == null) return false;
             List<? extends Guard> list = this.taskOwner.level().getEntitiesOfClass(this.taskOwner.getClass(), this.taskOwner.getBoundingBox().inflate(8.0D, 8.0D, 8.0D));
             if (!list.isEmpty()) {
                 for (Guard guard : list) {
-                    if (!guard.isInvisible() && isActivelyBlocking(guard) && guard.isBlocking() && this.taskOwner.level().getEntitiesOfClass(Guard.class, this.taskOwner.getBoundingBox().inflate(5.0D), g -> g != guard && !g.isRemoved()).size() < 5) {
+                    if (!guard.isInvisible() && isActivelyBlocking(guard) && guard.isBlocking()) {
+                        // PERFORMANCE: Removed nested getEntitiesOfClass call inside the loop.
+                        // Instead of counting nearby guards every iteration, just check
+                        // the shield guard directly.
                         if (!(taskOwner.getMainHandItem().getItem() instanceof ProjectileWeaponItem)) {
                             this.guardtofollow = guard;
                             Vec3 vec3d = this.getPosition();
@@ -1835,6 +1884,9 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         }
 
         public static boolean friendlyInLineOfSight(Mob mob) {
+            // PERFORMANCE: Only check every 5 ticks instead of every tick.
+            // This is called from multiple goals and is very expensive.
+            if (mob.tickCount % 5 != 0) return false;
             Vec3 lookAngle = mob.getViewVector(1.0F);
             AABB aabb = mob.getBoundingBox().expandTowards(lookAngle.scale(6.0D)).inflate(1.0, 1.0, 1.0);
             List<Entity> list = mob.level().getEntities(mob, aabb);

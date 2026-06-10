@@ -26,7 +26,9 @@ public class PickupBetterEquipmentGoal extends Goal {
         // BUG FIX: Don't try to pick up equipment while in active combat.
         // Previously guards would walk towards items instead of fighting.
         if (guard.getTarget() != null && guard.isAggressive()) return false;
-        return guard.tickCount % 40 == 0;
+        // PERFORMANCE: Only check every 80 ticks (4 seconds) instead of 40
+        if (guard.tickCount % 80 != 0) return false;
+        return true;
     }
 
     @Override

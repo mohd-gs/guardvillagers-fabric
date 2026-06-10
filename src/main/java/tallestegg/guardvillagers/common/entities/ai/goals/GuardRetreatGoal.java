@@ -22,6 +22,8 @@ public class GuardRetreatGoal extends Goal {
         if (guard.isWounded()) return false;
         LivingEntity target = guard.getTarget();
         if (target == null) return false;
+        // PERFORMANCE: Only check distance every 5 ticks
+        if (guard.tickCount % 5 != 0) return false;
         return guard.distanceTo(target) < GuardConfig.COMMON.archerRetreatDistance;
     }
 
