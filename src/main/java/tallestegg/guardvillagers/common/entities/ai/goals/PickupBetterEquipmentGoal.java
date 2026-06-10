@@ -9,18 +9,23 @@ import tallestegg.guardvillagers.common.entities.Guard;
 import tallestegg.guardvillagers.configuration.GuardConfig;
 import net.minecraft.world.entity.ai.goal.Goal;
 
+import java.util.Comparator;
 import java.util.List;
 
 /**
  * Goal that allows guards to pick up better equipment from the ground.
  * <p>
- * v3.2 changes:
- * - Fixed tier comparison (was using rarity.ordinal() which returned 0 for ALL
- *   common items — leather, iron, diamond armor were all "equal").
- * - Now uses registry-name-based tier mapping for correct vanilla tier ranking.
- * - Shields and food are now ALWAYS picked up (even if offhand is occupied,
- *   the old item is dropped and replaced with the better one).
- * - Added MaceItem detection (MC 26.1.2 new weapon type).
+ * v3.2.1 changes:
+ * - CRITICAL FIX: Moved scan-and-equip logic from tick() to start().
+ *   The previous version put logic in tick() but the Goal system never called it
+ *   because canContinueToUse() defaulted to canUse() which returned false immediately
+ *   (due to the tickCount % 60 check), causing the goal to start and stop before
+ *   tick() was ever executed.
+ * - Now uses a one-shot pattern: canUse() detects items, start() picks them up,
+ *   canContinueToUse() returns false so the goal releases immediately.
+ * - Reduced scan interval from 60 to 20 ticks (3s → 1s) for more responsive pickup.
+ * - Removed combat restriction: guards now pick up items even during combat
+ *   (they need shields/food most during fights!).
  */
 public class PickupBetterEquipmentGoal extends Goal {
     private final Guard guard;
@@ -33,34 +38,48 @@ public class PickupBetterEquipmentGoal extends Goal {
     @Override
     public boolean canUse() {
         if (!GuardConfig.COMMON.autoEquipmentUpgrade) return false;
-        if (this.cooldown > 0) { this.cooldown--; return false; }
+        if (this.cooldown > 0) {
+            this.cooldown--;
+            return false;
+        }
         if (guard.isBaby()) return false;
-        // Don't try to pick up equipment while in active combat.
-        if (guard.getTarget() != null && guard.isAggressive()) return false;
         // Don't pick up equipment while following (player might be leading them away)
         if (guard.isFollowing()) return false;
-        // Check every 60 ticks (3 seconds) for responsive pickup
-        if (guard.tickCount % 60 != 0) return false;
-        return true;
-    }
-
-    @Override
-    public void tick() {
+        // Check every 20 ticks (1 second) for responsive pickup
+        if (guard.tickCount % 20 != 0) return false;
+        // Pre-scan: only return true if there are items nearby to consider
         double range = GuardConfig.COMMON.equipmentPickupRange;
         List<ItemEntity> items = guard.level().getEntitiesOfClass(
                 ItemEntity.class, guard.getBoundingBox().inflate(range),
                 ie -> !ie.getItem().isEmpty() && ie.isAlive()
         );
-        int checked = 0;
+        return !items.isEmpty();
+    }
+
+    @Override
+    public boolean canContinueToUse() {
+        // One-shot goal: start() does all the work, then we're done.
+        return false;
+    }
+
+    @Override
+    public void start() {
+        double range = GuardConfig.COMMON.equipmentPickupRange;
+        List<ItemEntity> items = guard.level().getEntitiesOfClass(
+                ItemEntity.class, guard.getBoundingBox().inflate(range),
+                ie -> !ie.getItem().isEmpty() && ie.isAlive()
+        );
+
+        // Sort by distance so we pick up the closest item first
+        items.sort(Comparator.comparingDouble(guard::distanceToSqr));
+
         for (ItemEntity itemEntity : items) {
-            if (checked >= 8) break;
             ItemStack ground = itemEntity.getItem();
             if (tryEquipBetter(ground)) {
                 itemEntity.discard();
                 this.cooldown = 20; // 1 second cooldown after successful pickup
                 return;
             }
-            checked++;
         }
         this.cooldown = 40; // 2 second cooldown when nothing was picked up
     }
@@ -184,7 +203,7 @@ public class PickupBetterEquipmentGoal extends Goal {
         // Golden weapons (low tier despite gold rarity)
         if (itemId.contains("golden_sword") || itemId.contains("golden_axe")) return 2;
         // Wooden weapons (lowest tier)
-        if (itemId.contains("wooden_sword") || itemId.contains("wooden_axe")) return 1;
+        if (itemId.contains("wooden_sword") || itemId.contains("wooden_axe")) return 2;
         // Mace — high-tier weapon (comparable to diamond)
         if (stack.getItem() instanceof MaceItem) return 5;
         // Special ranged weapons — tier based on general effectiveness
