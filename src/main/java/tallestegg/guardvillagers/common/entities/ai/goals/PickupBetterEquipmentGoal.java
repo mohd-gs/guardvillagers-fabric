@@ -14,14 +14,13 @@ import java.util.List;
 /**
  * Goal that allows guards to pick up better equipment from the ground.
  * <p>
- * BUG FIX (v3.2): The previous version used rarity.ordinal() for tier comparison,
- * which returned 0 for ALL common-rarity items (leather, iron, diamond armor all
- * have COMMON rarity). This meant guards could never distinguish between armor
- * tiers — a guard in leather would NOT pick up diamond armor because both had
- * the same "defense" value of 0.
- * <p>
- * Now uses registry-name-based tier mapping that correctly identifies vanilla
- * armor and weapon tiers. Falls back to rarity + enchantment for modded items.
+ * v3.2 changes:
+ * - Fixed tier comparison (was using rarity.ordinal() which returned 0 for ALL
+ *   common items — leather, iron, diamond armor were all "equal").
+ * - Now uses registry-name-based tier mapping for correct vanilla tier ranking.
+ * - Shields and food are now ALWAYS picked up (even if offhand is occupied,
+ *   the old item is dropped and replaced with the better one).
+ * - Added MaceItem detection (MC 26.1.2 new weapon type).
  */
 public class PickupBetterEquipmentGoal extends Goal {
     private final Guard guard;
@@ -67,7 +66,7 @@ public class PickupBetterEquipmentGoal extends Goal {
     }
 
     private boolean tryEquipBetter(ItemStack ground) {
-        // Try weapon slot (mainhand = slot 5)
+        // 1. Try weapon slot (mainhand = slot 5)
         if (isWeaponish(ground)) {
             ItemStack current = guard.guardInventory.getItem(5);
             if (current.isEmpty() || getWeaponTier(ground) > getWeaponTier(current)) {
@@ -76,7 +75,8 @@ public class PickupBetterEquipmentGoal extends Goal {
                 return true;
             }
         }
-        // Try armor slots (0-3)
+
+        // 2. Try armor slots (0-3)
         Equippable equippable = ground.get(net.minecraft.core.component.DataComponents.EQUIPPABLE);
         if (equippable != null) {
             EquipmentSlot slot = equippable.slot();
@@ -90,14 +90,49 @@ public class PickupBetterEquipmentGoal extends Goal {
                 }
             }
         }
-        // Try offhand (slot 4) - shield or food
-        if (ground.getItem() instanceof ShieldItem || ground.has(net.minecraft.core.component.DataComponents.FOOD)) {
+
+        // 3. Try offhand (slot 4) — shield or food
+        // Guards ALWAYS want a shield if they don't have one.
+        // If they already have food but find better food (more hunger), swap it.
+        // If they have no offhand item, pick up anything useful.
+        boolean isShield = ground.getItem() instanceof ShieldItem;
+        boolean isFood = ground.has(net.minecraft.core.component.DataComponents.FOOD);
+
+        if (isShield || isFood) {
             ItemStack current = guard.guardInventory.getItem(4);
             if (current.isEmpty()) {
+                // Empty offhand — always pick up shield or food
                 guard.setItemSlot(EquipmentSlot.OFFHAND, ground.copy());
                 return true;
             }
+            // Shield logic: always prefer shield over food in offhand
+            if (isShield) {
+                boolean currentIsShield = current.getItem() instanceof ShieldItem;
+                if (!currentIsShield) {
+                    // Currently holding food, swap for shield (shields are more useful)
+                    dropOld(current);
+                    guard.setItemSlot(EquipmentSlot.OFFHAND, ground.copy());
+                    return true;
+                }
+                // Both are shields — pick up the new one if it's enchanted or the old one is damaged
+                if (ground.isEnchanted() && !current.isEnchanted()) {
+                    dropOld(current);
+                    guard.setItemSlot(EquipmentSlot.OFFHAND, ground.copy());
+                    return true;
+                }
+            }
+            // Food logic: swap for better food if current offhand is also food
+            if (isFood && !(current.getItem() instanceof ShieldItem)) {
+                int groundFood = getFoodValue(ground);
+                int currentFood = getFoodValue(current);
+                if (groundFood > currentFood) {
+                    dropOld(current);
+                    guard.setItemSlot(EquipmentSlot.OFFHAND, ground.copy());
+                    return true;
+                }
+            }
         }
+
         return false;
     }
 
@@ -112,8 +147,21 @@ public class PickupBetterEquipmentGoal extends Goal {
         // MC 26.1.2: SwordItem class was removed — swords are now plain Item instances.
         // Detect swords by registry name instead of instanceof.
         if (item instanceof ProjectileWeaponItem || item instanceof AxeItem || item instanceof TridentItem) return true;
+        // MaceItem is a new weapon type in MC 26.1.2
+        if (item instanceof MaceItem) return true;
         String itemId = BuiltInRegistries.ITEM.getKey(item).toString();
         return itemId.contains("_sword");
+    }
+
+    /**
+     * Get the hunger restoration value of a food item for comparison.
+     */
+    private int getFoodValue(ItemStack stack) {
+        net.minecraft.world.food.FoodProperties food = stack.get(net.minecraft.core.component.DataComponents.FOOD);
+        if (food != null) {
+            return food.nutrition();
+        }
+        return 0;
     }
 
     /**
@@ -137,6 +185,8 @@ public class PickupBetterEquipmentGoal extends Goal {
         if (itemId.contains("golden_sword") || itemId.contains("golden_axe")) return 2;
         // Wooden weapons (lowest tier)
         if (itemId.contains("wooden_sword") || itemId.contains("wooden_axe")) return 1;
+        // Mace — high-tier weapon (comparable to diamond)
+        if (stack.getItem() instanceof MaceItem) return 5;
         // Special ranged weapons — tier based on general effectiveness
         if (stack.getItem() instanceof TridentItem) return 5;
         if (stack.getItem() instanceof CrossbowItem) return 4;

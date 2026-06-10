@@ -5,6 +5,14 @@
       "id": "#c:tools/crossbow",
       "required": false
     },
-    "#minecraft:swords"
+    {
+      "id": "#c:tools/bow",
+      "required": false
+    },
+    "#minecraft:swords",
+    "#minecraft:axes",
+    "minecraft:trident",
+    "minecraft:bow",
+    "minecraft:crossbow"
   ]
 }
