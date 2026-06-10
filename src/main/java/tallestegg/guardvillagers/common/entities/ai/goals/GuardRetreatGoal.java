@@ -47,7 +47,7 @@ public class GuardRetreatGoal extends Goal {
         // Move away from target
         Vec3 away = DefaultRandomPos.getPosAway(guard, 8, 4, target.position());
         if (away != null) {
-            guard.getNavigation().moveTo(away.x, away.y, away.z, 1.2D);
+            guard.getNavigation().moveTo(away.x, away.y, away.z, 1.0D);
         }
     }
 }

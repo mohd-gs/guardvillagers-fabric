@@ -372,7 +372,7 @@ public class GuardConfig {
 
     public static class StartUpConfig {
         public double healthModifier = 20.0;
-        public double speedModifier = 0.5;
+        public double speedModifier = 0.35;
         public double followRangeModifier = 20.0;
 
         public void fromJson(JsonObject obj) {

@@ -96,7 +96,7 @@ import java.util.*;
 import java.util.function.Predicate;
 
 public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAttackMob, ReputationEventHandler, NeutralMob {
-    private static final AttributeModifier USE_ITEM_SPEED_PENALTY = new AttributeModifier(Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "item_slow_down"), -0.25D, AttributeModifier.Operation.ADD_VALUE);
+    private static final AttributeModifier USE_ITEM_SPEED_PENALTY = new AttributeModifier(Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "item_slow_down"), -0.3D, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL);
     private static final EntityDataAccessor<Optional<BlockPos>> GUARD_POS = SynchedEntityData.defineId(Guard.class, EntityDataSerializers.OPTIONAL_BLOCK_POS);
     private static final EntityDataAccessor<Boolean> PATROLLING = SynchedEntityData.defineId(Guard.class, EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<String> GUARD_VARIANT = SynchedEntityData.defineId(Guard.class, EntityDataSerializers.STRING);
@@ -694,23 +694,23 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         this.goalSelector.addGoal(0, new RaiseShieldGoal(this));
         this.goalSelector.addGoal(1, new GuardRunToEatGoal(this));
         this.goalSelector.addGoal(3, new RangedCrossbowAttackPassiveGoal<>(this, 1.0D, (float) GuardConfig.COMMON.guardCrossbowAttackRadius));
-        this.goalSelector.addGoal(3, new PassiveMobSpearUseGoal<>(this, 0.7D, 0.8D, 10.0F, 2.0F));
-        this.goalSelector.addGoal(3, new GuardBowAttack(this, 0.5D, 20, 15.0F));
+        this.goalSelector.addGoal(3, new PassiveMobSpearUseGoal<>(this, 1.0D, 0.8D, 10.0F, 2.0F));
+        this.goalSelector.addGoal(3, new GuardBowAttack(this, 1.0D, 20, 15.0F));
         this.goalSelector.addGoal(3, new GuardMeleeGoal(this, 1.0D, true));
-        this.goalSelector.addGoal(4, new FollowHeroGoal(this, 0.8F, 10.0F, 4.0F));
+        this.goalSelector.addGoal(4, new FollowHeroGoal(this, 1.0F, 10.0F, 4.0F));
         if (GuardConfig.COMMON.GuardsRunFromPolarBears)
-            this.goalSelector.addGoal(4, new AvoidEntityGoal<>(this, PolarBear.class, 12.0F, 1.0D, 1.2D));
-        this.goalSelector.addGoal(4, new MoveBackToVillageGoal(this, 0.5D, false));
+            this.goalSelector.addGoal(4, new AvoidEntityGoal<>(this, PolarBear.class, 12.0F, 1.0D, 1.4D));
+        this.goalSelector.addGoal(4, new MoveBackToVillageGoal(this, 0.6D, false));
         if (GuardConfig.COMMON.GuardsOpenDoors)
             this.goalSelector.addGoal(4, new GuardInteractDoorGoal(this, true));
         if (GuardConfig.COMMON.GuardFormation)
             this.goalSelector.addGoal(6, new FollowShieldGuards(this));
-        this.goalSelector.addGoal(3, new WalkBackToCheckPointGoal(this, 0.5D));
+        this.goalSelector.addGoal(3, new WalkBackToCheckPointGoal(this, 0.6D));
         if (GuardConfig.COMMON.guardPatrolAroundVillageWorkstations)
-            this.goalSelector.addGoal(5, new GolemRandomStrollInVillageGoal(this, 0.5D));
+            this.goalSelector.addGoal(5, new GolemRandomStrollInVillageGoal(this, 0.6D));
         if (GuardConfig.COMMON.guardPatrolVillageAi)
-            this.goalSelector.addGoal(5, new MoveThroughVillageGoal(this, 0.5D, false, 4, () -> false));
-        this.goalSelector.addGoal(8, new WaterAvoidingRandomStrollGoal(this, 0.5D));
+            this.goalSelector.addGoal(5, new MoveThroughVillageGoal(this, 0.6D, false, 4, () -> false));
+        this.goalSelector.addGoal(8, new WaterAvoidingRandomStrollGoal(this, 0.6D));
         this.goalSelector.addGoal(8, new LookAtPlayerGoal(this, AbstractVillager.class, 8.0F));
         this.goalSelector.addGoal(8, new LookAtPlayerGoal(this, Player.class, 8.0F));
         // Feature 2: Retreat goal for ranged guards
@@ -1511,7 +1511,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
                 if (tooClose && !guard.isPatrolling()) {
                     Vec3 away = DefaultRandomPos.getPosAway(guard, 8, 4, target.position());
                     if (away != null) {
-                        guard.getNavigation().moveTo(away.x, away.y, away.z, 1.2D);
+                        guard.getNavigation().moveTo(away.x, away.y, away.z, 1.0D);
                     }
                 } else if (distanceSq > (double) this.attackRadiusSqr) {
                     guard.getNavigation().moveTo(target, this.speedModifier);
@@ -1706,7 +1706,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         private int walkTimer;
 
         public GuardRunToEatGoal(Guard guard) {
-            super(guard, 1.0D);
+            super(guard, 0.8D);
             this.guard = guard;
             this.setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.TARGET, Goal.Flag.LOOK));
         }
@@ -1834,7 +1834,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
         @Override
         public void start() {
-            this.taskOwner.getNavigation().moveTo(x, y, z, 0.4D);
+            this.taskOwner.getNavigation().moveTo(x, y, z, 0.5D);
         }
     }
 
