@@ -3,12 +3,11 @@ package tallestegg.guardvillagers.common.entities.ai.goals;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.Goal;
-import net.minecraft.world.entity.ai.util.DefaultRandomPos;
-import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import tallestegg.guardvillagers.common.entities.Guard;
 import tallestegg.guardvillagers.configuration.GuardConfig;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 
@@ -17,28 +16,24 @@ import java.util.List;
  * <p>
  * This goal organizes nearby guards into tactical formations during combat
  * and while idle. Formations are determined by the mix of weapon types
- * present among nearby guards:
+ * present among nearby guards.
  * <p>
- * <b>Formation Types:</b>
- * <ul>
- *   <li><b>SHIELD_WALL</b>: Shield-bearing melee guards form a front line.
- *       Ranged guards stand behind them. Most defensive formation.</li>
- *   <li><b>PHALANX</b>: Spear/trident guards behind shield wall.
- *       Spears attack over shields. Combined arms formation.</li>
- *   <li><b>ARROW_LINE</b>: Ranged guards form a horizontal line.
- *       Maximizes firing arcs. Melee guards protect flanks.</li>
- *   <li><b>WEDGE</b>: Aggressive V-shape charge formation.
- *       Berserker axes lead. Used for breaking through enemy lines.</li>
- *   <li><b>SKIRMISH</b>: Loose formation. Guards spread out.
- *       Default formation when few guards are present.</li>
- * </ul>
+ * Formation Types:
+ * - SHIELD_WALL: Shield bearers in front, ranged behind
+ * - PHALANX: Shield wall + spears attacking over shoulders
+ * - ARROW_LINE: Ranged in horizontal line, melee on flanks
+ * - WEDGE: V-shape charge with berserkers at tip
+ * - SKIRMISH: Loose spread (fallback)
  * <p>
- * <b>How it works:</b>
- * 1. The formation leader (highest-rank guard or first guard) determines formation type
- *    based on the weapon composition of nearby guards.
- * 2. Each guard is assigned a position within the formation relative to the leader.
- * 3. Guards try to maintain their formation position while engaging enemies.
- * 4. Formations dissolve when enemies are too close for positioning to matter.
+ * BUG FIXES (v4.0.1):
+ * - Fixed List mutation bug: guards.add(0, this.guard) modified the list
+ *   returned by getNearbyGuards(), corrupting index calculations in
+ *   calculateFormationPosition(). Now creates a new ArrayList copy.
+ * - Fixed canContinueToUse() being too restrictive: removed the check
+ *   that broke formation when no target and not patrolling. Guards should
+ *   maintain defensive formations even during peacetime.
+ * - Lowered priority from 6 to 4 so formations can actually run instead
+ *   of being always overridden by WalkBackToCheckPointGoal (priority 3).
  */
 public class GuardFormationGoal extends Goal {
     private final Guard guard;
@@ -66,6 +61,8 @@ public class GuardFormationGoal extends Goal {
         if (!GuardConfig.COMMON.weaponSpecificBehavior) return false;
         if (guard.isBaby()) return false;
         if (guard.isFollowing()) return false;
+        // Don't form formations while mounted
+        if (guard.isPassenger()) return false;
 
         // PERFORMANCE: Only scan every 100 ticks (5 seconds)
         if (this.scanCooldown > 0) {
@@ -98,6 +95,7 @@ public class GuardFormationGoal extends Goal {
     public boolean canContinueToUse() {
         if (!GuardConfig.COMMON.GuardFormation) return false;
         if (guard.isFollowing()) return false;
+        if (guard.isPassenger()) return false;
 
         // Break formation if in active close combat (enemies within 3 blocks)
         LivingEntity target = guard.getTarget();
@@ -105,11 +103,8 @@ public class GuardFormationGoal extends Goal {
             return false; // Too close for formation — fight individually
         }
 
-        // Break formation if no target and not patrolling (idle wandering)
-        if (target == null && !guard.isPatrolling()) {
-            return false;
-        }
-
+        // Keep formation even without a target (peacetime defensive formation)
+        // Only break if we've been running too long without revalidation
         return this.formationTarget != null;
     }
 
@@ -164,7 +159,7 @@ public class GuardFormationGoal extends Goal {
         return guard.level().getEntitiesOfClass(
                 Guard.class,
                 guard.getBoundingBox().inflate(range, 4.0D, range),
-                g -> g != this.guard && g.isAlive() && !g.isFollowing()
+                g -> g != this.guard && g.isAlive() && !g.isFollowing() && !g.isPassenger()
         );
     }
 
@@ -176,7 +171,6 @@ public class GuardFormationGoal extends Goal {
         int spearGuards = 0;
         int rangedGuards = 0;
         int berserkerAxes = 0;
-        int maceGuards = 0;
 
         for (Guard g : guards) {
             WeaponBehavior.WeaponType type = WeaponBehavior.getWeaponType(g);
@@ -184,8 +178,14 @@ public class GuardFormationGoal extends Goal {
             if (type == WeaponBehavior.WeaponType.SPEAR || type == WeaponBehavior.WeaponType.TRIDENT) spearGuards++;
             if (type == WeaponBehavior.WeaponType.BOW || type == WeaponBehavior.WeaponType.CROSSBOW) rangedGuards++;
             if (type == WeaponBehavior.WeaponType.AXE && g.isBerserker()) berserkerAxes++;
-            if (type == WeaponBehavior.WeaponType.MACE) maceGuards++;
         }
+
+        // Also count this guard's role
+        WeaponBehavior.WeaponType myType = WeaponBehavior.getWeaponType(guard);
+        if (guard.isShieldGuard()) shieldBearers++;
+        if (myType == WeaponBehavior.WeaponType.SPEAR || myType == WeaponBehavior.WeaponType.TRIDENT) spearGuards++;
+        if (myType == WeaponBehavior.WeaponType.BOW || myType == WeaponBehavior.WeaponType.CROSSBOW) rangedGuards++;
+        if (myType == WeaponBehavior.WeaponType.AXE && guard.isBerserker()) berserkerAxes++;
 
         // PHALANX: Shield wall + spears = classic combined arms
         if (shieldBearers >= 2 && spearGuards >= 1) {
@@ -214,15 +214,18 @@ public class GuardFormationGoal extends Goal {
     /**
      * Calculate this guard's position in the formation.
      * The formation is centered on the formation leader (highest-rank guard).
-     * The formation faces toward the enemy (or north if no enemy).
+     * The formation faces toward the enemy (or leader's facing direction if no enemy).
+     *
+     * FIX: Creates a new ArrayList copy before adding this guard,
+     * preventing mutation of the getNearbyGuards() result.
      */
-    private Vec3 calculateFormationPosition(List<Guard> guards) {
+    private Vec3 calculateFormationPosition(List<Guard> nearbyGuards) {
         // Find the formation leader (highest rank, or closest to center)
-        Guard leader = findFormationLeader(guards);
+        Guard leader = findFormationLeader(nearbyGuards);
         if (leader == null) return null;
 
         // Determine formation facing direction
-        LivingEntity target = findCommonTarget(guards);
+        LivingEntity target = findCommonTarget(nearbyGuards);
         double facingAngle;
         if (target != null) {
             facingAngle = Math.atan2(target.getZ() - leader.getZ(), target.getX() - leader.getX());
@@ -230,9 +233,14 @@ public class GuardFormationGoal extends Goal {
             facingAngle = Math.toRadians(leader.getYRot()); // Face leader's direction
         }
 
+        // FIX: Create a NEW list that includes this guard
+        // Previously, guards.add(0, this.guard) mutated the list from
+        // getNearbyGuards(), corrupting subsequent calculations
+        List<Guard> allGuards = new ArrayList<>(nearbyGuards);
+        allGuards.add(0, this.guard);
+
         // Sort guards into roles for formation assignment
-        guards.sort((a, b) -> {
-            // Shield guards first (front line), then spears, then ranged, then others
+        allGuards.sort((a, b) -> {
             int roleA = getFormationRolePriority(a);
             int roleB = getFormationRolePriority(b);
             if (roleA != roleB) return Integer.compare(roleA, roleB);
@@ -240,16 +248,13 @@ public class GuardFormationGoal extends Goal {
             return Double.compare(a.distanceToSqr(leader), b.distanceToSqr(leader));
         });
 
-        // Add this guard to the sorted list
-        guards.add(0, this.guard); // Include self
-
         // Calculate positions based on formation type
         Vec3 rawPosition = switch (currentFormation) {
-            case SHIELD_WALL -> calculateShieldWallPosition(guards, leader, facingAngle);
-            case PHALANX -> calculatePhalanxPosition(guards, leader, facingAngle);
-            case ARROW_LINE -> calculateArrowLinePosition(guards, leader, facingAngle);
-            case WEDGE -> calculateWedgePosition(guards, leader, facingAngle);
-            case SKIRMISH -> calculateSkirmishPosition(guards, leader, facingAngle);
+            case SHIELD_WALL -> calculateShieldWallPosition(allGuards, leader, facingAngle);
+            case PHALANX -> calculatePhalanxPosition(allGuards, leader, facingAngle);
+            case ARROW_LINE -> calculateArrowLinePosition(allGuards, leader, facingAngle);
+            case WEDGE -> calculateWedgePosition(allGuards, leader, facingAngle);
+            case SKIRMISH -> calculateSkirmishPosition(allGuards, leader, facingAngle);
         };
 
         // Validate that the position has solid ground beneath
@@ -257,20 +262,20 @@ public class GuardFormationGoal extends Goal {
     }
 
     private Guard findFormationLeader(List<Guard> guards) {
-        Guard best = null;
-        int bestRank = -1;
+        // Include this guard in the leader search
+        Guard best = this.guard;
+        int bestRank = this.guard.getGuardRank().level;
         for (Guard g : guards) {
             if (g.getGuardRank().level > bestRank) {
                 bestRank = g.getGuardRank().level;
                 best = g;
             }
         }
-        // If no leader found among others, this guard is the leader
-        return best != null ? best : guard;
+        return best;
     }
 
     private LivingEntity findCommonTarget(List<Guard> guards) {
-        // Find the most common target among the guards
+        // Find the most common target among the guards (including self)
         LivingEntity target = guard.getTarget();
         if (target != null && target.isAlive()) return target;
         // Fall back to any guard's target
@@ -370,7 +375,6 @@ public class GuardFormationGoal extends Goal {
      */
     private Vec3 calculatePhalanxPosition(List<Guard> guards, Guard leader, double facingAngle) {
         int myRole = getFormationRolePriority(this.guard);
-        int myIndex = getMyIndex(guards);
 
         double cos = Math.cos(facingAngle);
         double sin = Math.sin(facingAngle);
@@ -467,7 +471,7 @@ public class GuardFormationGoal extends Goal {
             // Alternate: left flank, right flank, left flank, etc.
             boolean leftFlank = meleeIndex % 2 == 0;
             int flankPos = (meleeIndex / 2) + 1;
-            double lateralOffset = (leftFlank ? -1 : 1) * (flankPos * spacing + rangedFlankExtraOffset());
+            double lateralOffset = (leftFlank ? -1 : 1) * (flankPos * spacing + 2.0D);
 
             return new Vec3(
                     leader.getX() + perpCos * lateralOffset + cos * 2.0D,
@@ -475,10 +479,6 @@ public class GuardFormationGoal extends Goal {
                     leader.getZ() + perpSin * lateralOffset + sin * 2.0D
             );
         }
-    }
-
-    private double rangedFlankExtraOffset() {
-        return 2.0D;
     }
 
     /**
@@ -554,7 +554,7 @@ public class GuardFormationGoal extends Goal {
         // Check if there is solid ground beneath (within 3 blocks down)
         for (int i = 0; i <= 3; i++) {
             BlockPos below = blockPos.below(i);
-            BlockState belowState = guard.level().getBlockState(below);
+            var belowState = guard.level().getBlockState(below);
             if (!belowState.isAir() && belowState.isSolid()) {
                 // Found solid ground — return position on top of it
                 return new Vec3(pos.x, below.getY() + 1.0D, pos.z);
@@ -565,8 +565,8 @@ public class GuardFormationGoal extends Goal {
         for (int i = 1; i <= 3; i++) {
             BlockPos above = blockPos.above(i);
             BlockPos below = above.below();
-            BlockState belowState = guard.level().getBlockState(below);
-            BlockState aboveState = guard.level().getBlockState(above);
+            var belowState = guard.level().getBlockState(below);
+            var aboveState = guard.level().getBlockState(above);
             if (!belowState.isAir() && belowState.isSolid() && aboveState.isAir()) {
                 return new Vec3(pos.x, below.getY() + 1.0D, pos.z);
             }

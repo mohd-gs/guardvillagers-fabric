@@ -832,8 +832,9 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         if (GuardConfig.COMMON.GuardsOpenDoors)
             this.goalSelector.addGoal(4, new GuardInteractDoorGoal(this, true));
         if (GuardConfig.COMMON.GuardFormation)
-            // Replaced FollowShieldGuards with full formation system
-            this.goalSelector.addGoal(6, new GuardFormationGoal(this));
+            // Formation at priority 4 so it can run alongside MoveBackToVillage
+            // instead of being overridden by WalkBackToCheckPointGoal (priority 3)
+            this.goalSelector.addGoal(4, new GuardFormationGoal(this));
         this.goalSelector.addGoal(3, new WalkBackToCheckPointGoal(this, 0.6D));
         if (GuardConfig.COMMON.guardPatrolAroundVillageWorkstations)
             this.goalSelector.addGoal(5, new GolemRandomStrollInVillageGoal(this, 0.6D));
