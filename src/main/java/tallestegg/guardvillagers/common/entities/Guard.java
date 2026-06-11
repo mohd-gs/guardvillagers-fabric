@@ -93,7 +93,6 @@ import tallestegg.guardvillagers.common.entities.ai.goals.GuardSquadGoal;
 import tallestegg.guardvillagers.common.entities.ai.goals.WeaponBehavior;
 import tallestegg.guardvillagers.common.entities.ai.goals.GuardFormationGoal;
 import tallestegg.guardvillagers.common.entities.ai.goals.AntiCreeperGoal;
-import tallestegg.guardvillagers.common.entities.ai.goals.GuardFlankingGoal;
 import tallestegg.guardvillagers.common.entities.ai.goals.TargetPrioritizationGoal;
 import tallestegg.guardvillagers.configuration.GuardConfig;
 import tallestegg.guardvillagers.loot_tables.GuardLootTables;
@@ -817,24 +816,26 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         // Anti-Creeper: highest priority after survival goals — flee charging creepers
         this.goalSelector.addGoal(1, new AntiCreeperGoal(this));
         this.goalSelector.addGoal(1, new GuardRunToEatGoal(this));
+        // Formation at priority 2 (peacetime only — activates when no combat target)
+        // Previously at priority 4, which was ALWAYS overridden by WalkBackToCheckPoint
+        // (priority 3) and GuardMeleeGoal (priority 3), making formations non-functional.
+        if (GuardConfig.COMMON.GuardFormation)
+            this.goalSelector.addGoal(2, new GuardFormationGoal(this));
         this.goalSelector.addGoal(2, new GuardRetreatGoal(this));
         this.goalSelector.addGoal(2, new PickupBetterEquipmentGoal(this));
         this.goalSelector.addGoal(3, new RangedCrossbowAttackPassiveGoal<>(this, 1.0D, (float) GuardConfig.COMMON.guardCrossbowAttackRadius));
         this.goalSelector.addGoal(3, new PassiveMobSpearUseGoal<>(this, 1.0D, 0.8D, 10.0F, 2.0F));
         this.goalSelector.addGoal(3, new GuardBowAttack(this, 1.0D, 20, 15.0F));
         this.goalSelector.addGoal(3, new GuardMeleeGoal(this, 1.0D, true));
-        // Flanking behavior: guards try to circle around enemies
-        this.goalSelector.addGoal(3, new GuardFlankingGoal(this));
+        // Flanking is now integrated into GuardMeleeGoal.tick() — a separate
+        // GuardFlankingGoal at the same priority would always lose to GuardMeleeGoal
+        // in GoalSelector (same priority, same MOVE+LOOK flags, registered after).
         this.goalSelector.addGoal(4, new FollowHeroGoal(this, 1.0F, 10.0F, 4.0F));
         if (GuardConfig.COMMON.GuardsRunFromPolarBears)
             this.goalSelector.addGoal(4, new AvoidEntityGoal<>(this, PolarBear.class, 12.0F, 1.0D, 1.4D));
         this.goalSelector.addGoal(4, new MoveBackToVillageGoal(this, 0.6D, false));
         if (GuardConfig.COMMON.GuardsOpenDoors)
             this.goalSelector.addGoal(4, new GuardInteractDoorGoal(this, true));
-        if (GuardConfig.COMMON.GuardFormation)
-            // Formation at priority 4 so it can run alongside MoveBackToVillage
-            // instead of being overridden by WalkBackToCheckPointGoal (priority 3)
-            this.goalSelector.addGoal(4, new GuardFormationGoal(this));
         this.goalSelector.addGoal(3, new WalkBackToCheckPointGoal(this, 0.6D));
         if (GuardConfig.COMMON.guardPatrolAroundVillageWorkstations)
             this.goalSelector.addGoal(5, new GolemRandomStrollInVillageGoal(this, 0.6D));
@@ -1719,12 +1720,18 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         private static final double DEFAULT_ATTACK_REACH = Math.sqrt(2.04F) - (double) 0.6F;
         public final Guard guard;
         private int shieldRaiseDelay = 0;
+        // Integrated flanking state (was separate GuardFlankingGoal)
+        private boolean isFlanking = false;
+        private Vec3 flankTarget = null;
+        private int flankCooldown = 0;
 
         @Override
         public void start() {
             super.start();
             this.guard.setAggressive(true);
             this.shieldRaiseDelay = 0;
+            this.isFlanking = false;
+            this.flankTarget = null;
         }
 
         @Override
@@ -1732,6 +1739,8 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
             super.stop();
             this.guard.setAggressive(false);
             this.shieldRaiseDelay = 0;
+            this.isFlanking = false;
+            this.flankTarget = null;
         }
 
         public GuardMeleeGoal(Guard guard, double speedIn, boolean useLongMemory) {
@@ -1755,6 +1764,42 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
             if (target != null) {
                 WeaponBehavior.WeaponType weaponType = WeaponBehavior.getWeaponType(guard);
                 double dist = target.distanceTo(guard);
+
+                // === INTEGRATED FLANKING (was GuardFlankingGoal) ===
+                // Flanking is integrated here because a separate GuardFlankingGoal
+                // at the same priority would always lose to GuardMeleeGoal in
+                // GoalSelector (same priority, same flags, registered after).
+                if (GuardConfig.COMMON.weaponSpecificBehavior && GuardConfig.COMMON.guardFlanking) {
+                    if (this.flankCooldown > 0) {
+                        this.flankCooldown--;
+                    }
+
+                    if (this.isFlanking && this.flankTarget != null) {
+                        // Still moving to flank position
+                        double distToFlank = guard.distanceToSqr(this.flankTarget);
+                        if (distToFlank < 4.0D) {
+                            // Reached flank position — switch to normal combat
+                            this.isFlanking = false;
+                            this.flankTarget = null;
+                        } else {
+                            // Continue moving to flank position
+                            guard.getNavigation().moveTo(this.flankTarget.x, this.flankTarget.y, this.flankTarget.z, 1.2D);
+                            guard.getLookControl().setLookAt(target, 30.0F, 30.0F);
+                            return; // Don't do normal combat while flanking
+                        }
+                    } else if (this.flankCooldown <= 0 && dist > 3.0D && dist <= 10.0D) {
+                        // Try to start flanking if we're at medium range
+                        if (shouldFlank(weaponType, target)) {
+                            this.flankTarget = calculateFlankPosition(target);
+                            if (this.flankTarget != null) {
+                                this.isFlanking = true;
+                                guard.getNavigation().moveTo(this.flankTarget.x, this.flankTarget.y, this.flankTarget.z, 1.2D);
+                                guard.getLookControl().setLookAt(target, 30.0F, 30.0F);
+                                return;
+                            }
+                        }
+                    }
+                }
 
                 // === WEAPON-SPECIFIC COMBAT POSITIONING ===
                 if (GuardConfig.COMMON.weaponSpecificBehavior) {
@@ -1860,6 +1905,51 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
                 aabb = mob.getBoundingBox();
             }
             return aabb.inflate(DEFAULT_ATTACK_REACH, 0.0D, DEFAULT_ATTACK_REACH);
+        }
+
+        // === Integrated Flanking Methods (was GuardFlankingGoal) ===
+
+        /**
+         * Determine if this guard should flank based on weapon type and combat situation.
+         * - Sword guards: 50% chance to flank (others hold the line)
+         * - Berserker axes: Always try to flank for devastating rear attacks
+         * - Trident guards: Circle at extended range to find openings
+         * Only flanks if there are other guards engaging from the front.
+         */
+        private boolean shouldFlank(WeaponBehavior.WeaponType weaponType, LivingEntity target) {
+            // Check if there are other guards already engaging from the front
+            long nearbyFightingGuards = guard.level().getEntitiesOfClass(
+                    Guard.class,
+                    guard.getBoundingBox().inflate(10.0D, 4.0D, 10.0D),
+                    g -> g != this.guard && g.isAlive() && g.getTarget() != null
+            ).size();
+
+            if (nearbyFightingGuards < 1) return false; // No one holding the front
+
+            return switch (weaponType) {
+                case SWORD -> guard.getRandom().nextFloat() < 0.5F; // 50% chance
+                case AXE -> guard.isBerserker(); // Berserkers always flank
+                case TRIDENT -> guard.getRandom().nextFloat() < 0.6F; // 60% chance
+                default -> false;
+            };
+        }
+
+        /**
+         * Calculate a position to the side or behind the target.
+         * Uses the target's facing direction to determine "behind".
+         */
+        private Vec3 calculateFlankPosition(LivingEntity target) {
+            float enemyYaw = target.getYRot() * ((float) Math.PI / 180F);
+            boolean goLeft = (guard.getId() % 2 == 0);
+            double flankAngle = enemyYaw + (goLeft ? Math.PI * 0.6 : -Math.PI * 0.6);
+            double flankDistance = 3.0D;
+
+            double targetX = target.getX() + Math.cos(flankAngle) * flankDistance;
+            double targetZ = target.getZ() + Math.sin(flankAngle) * flankDistance;
+
+            Vec3 candidate = new Vec3(targetX, target.getY(), targetZ);
+            Vec3 safePos = net.minecraft.world.entity.ai.util.DefaultRandomPos.getPosTowards(guard, 8, 4, candidate, (float) Math.PI / 4F);
+            return safePos != null ? safePos : candidate;
         }
     }
 

@@ -7,4 +7,5 @@ import net.minecraft.world.item.Item;
 
 public class GuardVillagerTags {
     public static final TagKey<Item> GUARD_CONVERT = TagKey.create(Registries.ITEM, Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "convertible_guard_items"));
+    public static final TagKey<Item> SPEAR_ITEMS = TagKey.create(Registries.ITEM, Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "spear_items"));
 }

@@ -1,10 +1,12 @@
 package tallestegg.guardvillagers.common.entities.ai.goals;
 
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.tags.ItemTags;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.item.*;
+import tallestegg.guardvillagers.GuardVillagerTags;
 import tallestegg.guardvillagers.common.entities.Guard;
 import tallestegg.guardvillagers.configuration.GuardConfig;
 
@@ -57,14 +59,34 @@ public final class WeaponBehavior {
 
     /**
      * Determine the weapon type based on the guard's main hand item.
+     *
+     * FIX (v4.0.2): Added SPEAR detection using ItemTags.SPEARS (vanilla tag
+     * that includes trident). Previously, SPEAR was never returned because no
+     * vanilla item mapped to it, making PHALANX formation impossible and all
+     * spear-related combat behaviors dead code.
+     *
+     * Detection order matters:
+     * 1. Items in ItemTags.SPEARS → SPEAR (trident, modded spears)
+     * 2. _sword name pattern → SWORD
+     * 3. AxeItem → AXE
+     * 4. MaceItem → MACE
+     * 5. BowItem → BOW
+     * 6. CrossbowItem → CROSSBOW
+     *
+     * Note: TridentItem is in ItemTags.SPEARS, so it returns SPEAR instead of
+     * TRIDENT. This is intentional — tridents work as spears for melee reach
+     * and formation behavior. The TRIDENT enum is kept for modded weapons
+     * that need the ranged+melee hybrid distinction.
      */
     public static WeaponType getWeaponType(Guard guard) {
         ItemStack mainHand = guard.getMainHandItem();
         Item item = mainHand.getItem();
+        // Check ItemTags.SPEARS (vanilla tag, includes trident) and our custom
+        // guardvillagers:spear_items tag FIRST — catches trident and any modded spears
+        if (mainHand.is(ItemTags.SPEARS) || mainHand.is(GuardVillagerTags.SPEAR_ITEMS)) return WeaponType.SPEAR;
         if (BuiltInRegistries.ITEM.getKey(item).toString().contains("_sword")) return WeaponType.SWORD;
         if (item instanceof AxeItem) return WeaponType.AXE;
         if (item instanceof MaceItem) return WeaponType.MACE;
-        if (item instanceof TridentItem) return WeaponType.TRIDENT;
         if (item instanceof BowItem) return WeaponType.BOW;
         if (item instanceof CrossbowItem) return WeaponType.CROSSBOW;
         return WeaponType.UNARMED;

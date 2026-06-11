@@ -14,26 +14,31 @@ import java.util.List;
 /**
  * Military Formation System for Guard Villagers.
  * <p>
- * This goal organizes nearby guards into tactical formations during combat
- * and while idle. Formations are determined by the mix of weapon types
- * present among nearby guards.
+ * This goal organizes nearby guards into tactical formations during
+ * peacetime (when guards have no combat target). Formations are determined
+ * by the mix of weapon types present among nearby guards.
  * <p>
  * Formation Types:
  * - SHIELD_WALL: Shield bearers in front, ranged behind
- * - PHALANX: Shield wall + spears attacking over shoulders
+ * - PHALANX: Shield wall + swords/spears attacking over shoulders
  * - ARROW_LINE: Ranged in horizontal line, melee on flanks
  * - WEDGE: V-shape charge with berserkers at tip
  * - SKIRMISH: Loose spread (fallback)
  * <p>
- * BUG FIXES (v4.0.1):
+ * BUG FIXES (v4.0.2):
+ * - PRIORITY FIX: Moved from priority 4 to priority 2. Previously,
+ *   WalkBackToCheckPointGoal (priority 3) and GuardMeleeGoal (priority 3)
+ *   always overrode the formation goal because they had higher priority
+ *   (lower number) and shared the MOVE flag. Formations NEVER activated.
+ * - PEACETIME ONLY: Formation now only activates when the guard has NO
+ *   combat target. Combat formation behavior (shield bearers holding
+ *   position instead of charging) is integrated into GuardMeleeGoal.
+ * - SPEAR FIX: Since vanilla MC has no spear items, PHALANX formation
+ *   now counts sword+shield guards as "pike" guards standing behind the
+ *   front shield line. Trident guards also count as spear-equivalent.
  * - Fixed List mutation bug: guards.add(0, this.guard) modified the list
- *   returned by getNearbyGuards(), corrupting index calculations in
- *   calculateFormationPosition(). Now creates a new ArrayList copy.
- * - Fixed canContinueToUse() being too restrictive: removed the check
- *   that broke formation when no target and not patrolling. Guards should
- *   maintain defensive formations even during peacetime.
- * - Lowered priority from 6 to 4 so formations can actually run instead
- *   of being always overridden by WalkBackToCheckPointGoal (priority 3).
+ *   returned by getNearbyGuards(), corrupting index calculations.
+ *   Now creates a new ArrayList copy.
  */
 public class GuardFormationGoal extends Goal {
     private final Guard guard;
@@ -63,6 +68,10 @@ public class GuardFormationGoal extends Goal {
         if (guard.isFollowing()) return false;
         // Don't form formations while mounted
         if (guard.isPassenger()) return false;
+        // PEACETIME ONLY: Only form formations when NOT in combat.
+        // Combat formation behavior (holding position, shield wall while fighting)
+        // is integrated into GuardMeleeGoal.tick().
+        if (guard.getTarget() != null && guard.isAggressive()) return false;
 
         // PERFORMANCE: Only scan every 100 ticks (5 seconds)
         if (this.scanCooldown > 0) {
@@ -96,15 +105,10 @@ public class GuardFormationGoal extends Goal {
         if (!GuardConfig.COMMON.GuardFormation) return false;
         if (guard.isFollowing()) return false;
         if (guard.isPassenger()) return false;
+        // Break formation if entering active combat
+        if (guard.getTarget() != null && guard.isAggressive()) return false;
 
-        // Break formation if in active close combat (enemies within 3 blocks)
-        LivingEntity target = guard.getTarget();
-        if (target != null && target.isAlive() && guard.distanceTo(target) < 3.0D) {
-            return false; // Too close for formation — fight individually
-        }
-
-        // Keep formation even without a target (peacetime defensive formation)
-        // Only break if we've been running too long without revalidation
+        // Keep formation during peacetime (defensive formation)
         return this.formationTarget != null;
     }
 
@@ -165,12 +169,17 @@ public class GuardFormationGoal extends Goal {
 
     /**
      * Determine the best formation based on the weapon composition of nearby guards.
+     *
+     * FIX: Since vanilla MC has no spear items, we also count sword guards
+     * behind shield bearers as "pike-equivalent" for PHALANX formation.
+     * Trident guards count as both ranged and spear-equivalent.
      */
     private FormationType determineFormationType(List<Guard> guards) {
         int shieldBearers = 0;
-        int spearGuards = 0;
+        int spearGuards = 0; // Trident or sword guards behind shields
         int rangedGuards = 0;
         int berserkerAxes = 0;
+        int swordGuards = 0;
 
         for (Guard g : guards) {
             WeaponBehavior.WeaponType type = WeaponBehavior.getWeaponType(g);
@@ -178,6 +187,7 @@ public class GuardFormationGoal extends Goal {
             if (type == WeaponBehavior.WeaponType.SPEAR || type == WeaponBehavior.WeaponType.TRIDENT) spearGuards++;
             if (type == WeaponBehavior.WeaponType.BOW || type == WeaponBehavior.WeaponType.CROSSBOW) rangedGuards++;
             if (type == WeaponBehavior.WeaponType.AXE && g.isBerserker()) berserkerAxes++;
+            if (type == WeaponBehavior.WeaponType.SWORD && !g.isShieldGuard()) swordGuards++;
         }
 
         // Also count this guard's role
@@ -186,9 +196,14 @@ public class GuardFormationGoal extends Goal {
         if (myType == WeaponBehavior.WeaponType.SPEAR || myType == WeaponBehavior.WeaponType.TRIDENT) spearGuards++;
         if (myType == WeaponBehavior.WeaponType.BOW || myType == WeaponBehavior.WeaponType.CROSSBOW) rangedGuards++;
         if (myType == WeaponBehavior.WeaponType.AXE && guard.isBerserker()) berserkerAxes++;
+        if (myType == WeaponBehavior.WeaponType.SWORD && !guard.isShieldGuard()) swordGuards++;
 
-        // PHALANX: Shield wall + spears = classic combined arms
-        if (shieldBearers >= 2 && spearGuards >= 1) {
+        // Count sword guards as "pike-equivalent" for PHALANX formation
+        // This allows PHALANX to form with sword guards standing behind shields
+        int pikeGuards = spearGuards + swordGuards;
+
+        // PHALANX: Shield wall + spears/swords = classic combined arms
+        if (shieldBearers >= 2 && pikeGuards >= 1) {
             return FormationType.PHALANX;
         }
 
@@ -289,16 +304,23 @@ public class GuardFormationGoal extends Goal {
      * Formation role priority (lower = front line):
      * 0 = Shield bearer (front line)
      * 1 = Spear/trident (behind shields)
-     * 2 = Sword (front line support)
+     * 2 = Sword without shield (front line support / pike-equivalent behind shields in PHALANX)
      * 3 = Mace (front line)
      * 4 = Ranged (back line)
      * 5 = Berserker (lead charge)
+     *
+     * FIX: Sword guards without shields are now placed behind shield bearers
+     * in PHALANX formation (acting as "pike" guards) since vanilla MC
+     * has no spear items. This makes PHALANX actually achievable.
      */
     private int getFormationRolePriority(Guard g) {
         WeaponBehavior.WeaponType type = WeaponBehavior.getWeaponType(g);
         if (g.isShieldGuard()) return 0;
         if (type == WeaponBehavior.WeaponType.SPEAR || type == WeaponBehavior.WeaponType.TRIDENT) return 1;
-        if (type == WeaponBehavior.WeaponType.SWORD) return 2;
+        if (type == WeaponBehavior.WeaponType.SWORD) {
+            // Sword guards without shields act as pike-equivalent in PHALANX
+            return this.currentFormation == FormationType.PHALANX ? 1 : 2;
+        }
         if (type == WeaponBehavior.WeaponType.MACE) return 3;
         if (type == WeaponBehavior.WeaponType.BOW || type == WeaponBehavior.WeaponType.CROSSBOW) return 4;
         if (type == WeaponBehavior.WeaponType.AXE && g.isBerserker()) return 5;

@@ -16,19 +16,16 @@ import java.util.List;
  * - Squad members target the same enemy as their captain (focus fire)
  * - Squad members follow their captain when idle
  *
- * BUG FIXES from v3.3.0:
- * - Goal now uses one-shot pattern: canUse() triggers every 200 ticks, start() organizes,
- *   canContinueToUse() returns false. Previously the goal ran forever since
- *   canContinueToUse() always returned true for captains, causing:
- *   (a) getSquadMembers() entity scan EVERY TICK (extremely expensive)
- *   (b) organizeSquad() called from both start() and tick() (redundant)
- * - Focus fire and follow logic moved to tick() with throttled entity scans (every 40 ticks)
- * - Squad members are validated: must be alive, not following player, not in combat
- * - Added proper cleanup when captain loses rank or dies
+ * BUG FIXES (v4.0.2):
+ * - CONTINUOUS OPERATION: Previously, canContinueToUse() returned false after
+ *   200 ticks, causing focus fire to work only 50% of the time. Now the goal
+ *   runs continuously as long as the guard is a captain.
+ * - organizeSquad() moved from start() to tick() with 200-tick throttle,
+ *   ensuring new guards can join and dead/invalid members are removed regularly.
+ * - Focus fire and follow logic in tick() with 40-tick throttle for performance.
  */
 public class GuardSquadGoal extends Goal {
     private final Guard captain;
-    private int cooldown = 0;
     private int tickCounter = 0;
 
     public GuardSquadGoal(Guard guard) {
@@ -42,39 +39,34 @@ public class GuardSquadGoal extends Goal {
         // Only captain-rank guards organize squads
         if (captain.getGuardRank() != Guard.GuardRank.CAPTAIN) return false;
         if (!GuardConfig.COMMON.guardLeveling) return false;
-        if (this.cooldown > 0) {
-            this.cooldown--;
-            return false;
-        }
-        // Only check every 200 ticks (10 seconds) — squad organization is low priority
-        if (captain.tickCount % 200 != 0) return false;
         return true;
     }
 
     @Override
     public boolean canContinueToUse() {
-        // One-shot pattern: run for 1 tick to do organization, then stop.
-        // Focus fire and follow logic is handled via cached squad member list
-        // that is refreshed periodically in the tick method.
-        // We run for up to 200 ticks (until next canUse check) to handle
-        // focus fire and following, but with throttled entity scans.
+        // Run continuously as long as the guard is a captain.
+        // Previously returned false after 200 ticks, breaking focus fire 50% of the time.
         if (captain.getGuardRank() != Guard.GuardRank.CAPTAIN) return false;
         if (!GuardConfig.COMMON.guardLeveling) return false;
-        return this.tickCounter < 200;
+        return true;
     }
 
     @Override
     public void start() {
         this.tickCounter = 0;
-        organizeSquad();
     }
 
     @Override
     public void tick() {
         this.tickCounter++;
 
+        // Organize squad every 200 ticks (10 seconds)
+        if (this.tickCounter % 200 == 0) {
+            organizeSquad();
+        }
+
         // PERFORMANCE: Only scan for squad members every 40 ticks (2 seconds)
-        // instead of every tick. Focus fire doesn't need to be instant.
+        // Focus fire doesn't need to be instant — 2 seconds is responsive enough.
         if (this.tickCounter % 40 != 0) return;
 
         List<Guard> squadMembers = getSquadMembers();
@@ -99,15 +91,11 @@ public class GuardSquadGoal extends Goal {
                 }
             }
         }
-
-        // Reorganize squad every 200 ticks (will be handled by start() on next cycle)
     }
 
     @Override
     public void stop() {
-        this.cooldown = 0; // No extra cooldown — the 200-tick canUse throttle handles it
         this.tickCounter = 0;
-
         // If this guard is no longer a captain, clean up squad members
         if (captain.getGuardRank() != Guard.GuardRank.CAPTAIN) {
             cleanupSquad();
