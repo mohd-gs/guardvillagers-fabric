@@ -829,8 +829,9 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         this.goalSelector.addGoal(8, new LookAtPlayerGoal(this, Player.class, 8.0F));
         // Feature 2: Retreat goal for ranged guards
         this.goalSelector.addGoal(2, new GuardRetreatGoal(this));
-        // Feature 5: Auto-mount horses
-        this.goalSelector.addGoal(3, new GuardMountHorseGoal(this));
+        // Feature 5: Auto-mount horses (priority 5 = peacetime, avoids conflict
+        // with WalkBackToCheckPointGoal at priority 3 which also uses MOVE flag)
+        this.goalSelector.addGoal(5, new GuardMountHorseGoal(this));
         // Feature 7: Squad system — captain organizes nearby guards
         this.goalSelector.addGoal(4, new GuardSquadGoal(this));
         // Feature 9: Auto equipment upgrade — walks toward + picks up items

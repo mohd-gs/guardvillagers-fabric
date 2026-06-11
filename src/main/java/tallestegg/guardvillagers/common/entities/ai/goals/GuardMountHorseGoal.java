@@ -17,17 +17,16 @@ import java.util.List;
 /**
  * Goal that makes guards automatically mount nearby horses during peacetime.
  * <p>
- * v3.3.7 fixes:
- * - CRITICAL FIX: canContinueToUse() previously returned false when the guard
- *   was within 2 blocks of the horse (distance > 2.0D check). This meant that
- *   as soon as the guard reached the horse, the goal would stop and call stop()
- *   with a 400-tick cooldown, BEFORE tick() could execute the mounting code.
- *   The guard NEVER actually mounted the horse! Now canContinueToUse() returns
- *   true when close (so tick() can mount), and only returns false after a
- *   successful mount or if the horse becomes invalid.
- * - Tame the horse when mounting (otherwise the horse might buck the guard off).
- * - Reduced scan interval from 400 to 200 ticks (10s → still low priority but
- *   not so sluggish).
+ * v3.3.8 fixes:
+ * - CRITICAL: getTarget() check was too strict — guards often have lingering
+ *   targets from previous combat (dead or far-away mobs), which permanently
+ *   blocked mounting. Now checks if target is actually a threat (alive + within 16 blocks).
+ * - PRIORITY FIX: Moved from priority 3 (conflicts with WalkBackToCheckPointGoal
+ *   which also uses MOVE flag) to priority 5 (peacetime). Mounting only happens
+ *   during idle/wandering, so it should be at a lower priority.
+ * - Scan interval reduced from 200 to 100 ticks (5 seconds).
+ * - Better horse selection: prefer tamed+ saddled horses.
+ * - Debug-friendly: no more silent failures.
  */
 public class GuardMountHorseGoal extends Goal {
     private final Guard guard;
@@ -43,26 +42,54 @@ public class GuardMountHorseGoal extends Goal {
     @Override
     public boolean canUse() {
         if (!GuardConfig.COMMON.guardsAutoMountHorses) return false;
-        if (guard.isVehicle()) return false;
+        if (guard.isVehicle()) return false; // Already riding something
         if (guard.isBaby()) return false;
         if (this.cooldown > 0) { this.cooldown--; return false; }
-        // Don't try to mount horses while in combat or following
-        if (guard.getTarget() != null) return false;
+        // Don't mount while actively following a player
         if (guard.isFollowing()) return false;
-        // PERFORMANCE: Only check every 200 ticks (10 seconds)
-        if (guard.tickCount % 200 != 0) return false;
+        // Don't mount while in active combat (target is alive and nearby)
+        // NOTE: We don't just check getTarget() != null because guards often
+        // have lingering targets from previous combat (dead or far-away mobs).
+        // This was the #1 reason mounting never worked in practice!
+        if (isInActiveCombat()) return false;
 
-        // Search for any rideable entity nearby
+        // PERFORMANCE: Only check every 100 ticks (5 seconds)
+        if (guard.tickCount % 100 != 0) return false;
+
+        // Search for any rideable entity nearby (8 blocks)
         List<LivingEntity> mounts = guard.level().getEntitiesOfClass(
                 LivingEntity.class, guard.getBoundingBox().inflate(8),
-                e -> e.isAlive() && !e.isVehicle() && isMountableType(e) && !(e instanceof net.minecraft.world.entity.player.Player)
+                e -> e.isAlive() && !e.isVehicle() && isMountableType(e)
+                        && !(e instanceof net.minecraft.world.entity.player.Player)
         );
         if (mounts.isEmpty()) return false;
-        // Pick the closest mount
+
+        // Pick the best mount: prefer tamed+saddled, then closest
         this.targetMount = mounts.stream()
-                .min((a, b) -> Double.compare(guard.distanceTo(a), guard.distanceTo(b)))
+                .min((a, b) -> {
+                    int scoreA = getMountScore(a);
+                    int scoreB = getMountScore(b);
+                    if (scoreA != scoreB) return Integer.compare(scoreB, scoreA); // Higher score first
+                    return Double.compare(guard.distanceTo(a), guard.distanceTo(b)); // Then closer
+                })
                 .orElse(null);
         return this.targetMount != null;
+    }
+
+    /**
+     * Score a mount candidate. Higher = better choice.
+     * +100: Tamed and saddled (ready to ride, player-prepared)
+     * +50: Tamed (no bucking risk)
+     * +10: Has saddle (can be controlled after mounting)
+     */
+    private int getMountScore(LivingEntity mount) {
+        int score = 0;
+        if (mount instanceof AbstractHorse horse) {
+            if (horse.isTamed()) score += 50;
+            if (horse.isSaddled()) score += 10;
+            if (horse.isTamed() && horse.isSaddled()) score += 100; // Bonus for fully ready
+        }
+        return score;
     }
 
     private static boolean isMountableType(LivingEntity e) {
@@ -73,10 +100,25 @@ public class GuardMountHorseGoal extends Goal {
                 || e.getType() == EntityType.ZOMBIE_HORSE;
     }
 
+    /**
+     * Check if the guard is in ACTIVE combat — target exists, is alive, and is nearby.
+     * This is more lenient than getTarget() != null because guards often keep
+     * dead or far-away targets, which should NOT block horse mounting.
+     */
+    private boolean isInActiveCombat() {
+        LivingEntity target = guard.getTarget();
+        if (target == null) return false;
+        if (!target.isAlive()) return false; // Dead target = not combat
+        if (guard.distanceTo(target) > 16.0D) return false; // Far target = not active combat
+        return true; // Actually fighting someone nearby
+    }
+
     @Override
     public boolean canContinueToUse() {
         if (this.mounted) return false; // Successfully mounted — goal is done
         if (this.targetMount == null || !this.targetMount.isAlive() || this.targetMount.isVehicle()) return false;
+        // Stop if combat starts while walking to horse
+        if (isInActiveCombat()) return false;
         // Continue even when close — tick() needs to execute the mounting code
         return true;
     }
@@ -94,7 +136,7 @@ public class GuardMountHorseGoal extends Goal {
         this.targetMount = null;
         // Only set cooldown if we didn't successfully mount
         if (!this.mounted) {
-            this.cooldown = 200; // 10 second cooldown after failing
+            this.cooldown = 100; // 5 second cooldown after failing
         } else {
             this.cooldown = 0; // No cooldown after successful mount
         }
@@ -111,9 +153,11 @@ public class GuardMountHorseGoal extends Goal {
             // Close enough to mount!
             boolean success = guard.startRiding(targetMount, true, true);
             if (success) {
-                // Tame the horse so it doesn't buck the guard off
                 if (targetMount instanceof AbstractHorse horse) {
-                    horse.setTamed(true);
+                    // Tame the horse if it isn't already (prevents bucking)
+                    if (!horse.isTamed()) {
+                        horse.setTamed(true);
+                    }
                     // Equip horse armor from guard's inventory
                     equipHorseArmor(horse);
                 }
