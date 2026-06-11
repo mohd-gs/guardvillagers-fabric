@@ -203,6 +203,10 @@ public class GuardConfig {
         public double captainInspirationRange = 10.0;
         public double captainInspirationDamageBonus = 0.2;
 
+        // Advanced Ranged System - accuracy improves by rank
+        public double rangedAccuracyBase = 8.0; // base inaccuracy for Recruit rank
+        public double rangedAccuracyPerRank = 2.0; // accuracy improvement per rank level
+
         // Advanced Cavalry
         public double cavalryChargeDamageBonus = 0.5;
 
@@ -294,6 +298,8 @@ public class GuardConfig {
             maxPatrolWaypoints = getIntSafe(obj, "maxPatrolWaypoints", maxPatrolWaypoints);
             captainInspirationRange = getDoubleSafe(obj, "captainInspirationRange", captainInspirationRange);
             captainInspirationDamageBonus = getDoubleSafe(obj, "captainInspirationDamageBonus", captainInspirationDamageBonus);
+            rangedAccuracyBase = getDoubleSafe(obj, "rangedAccuracyBase", rangedAccuracyBase);
+            rangedAccuracyPerRank = getDoubleSafe(obj, "rangedAccuracyPerRank", rangedAccuracyPerRank);
             cavalryChargeDamageBonus = getDoubleSafe(obj, "cavalryChargeDamageBonus", cavalryChargeDamageBonus);
             squadSize = getIntSafe(obj, "squadSize", squadSize);
             squadFollowRange = getDoubleSafe(obj, "squadFollowRange", squadFollowRange);
@@ -382,6 +388,8 @@ public class GuardConfig {
             obj.addProperty("maxPatrolWaypoints", maxPatrolWaypoints);
             obj.addProperty("captainInspirationRange", captainInspirationRange);
             obj.addProperty("captainInspirationDamageBonus", captainInspirationDamageBonus);
+            obj.addProperty("rangedAccuracyBase", rangedAccuracyBase);
+            obj.addProperty("rangedAccuracyPerRank", rangedAccuracyPerRank);
             obj.addProperty("cavalryChargeDamageBonus", cavalryChargeDamageBonus);
             obj.addProperty("squadSize", squadSize);
             obj.addProperty("squadFollowRange", squadFollowRange);

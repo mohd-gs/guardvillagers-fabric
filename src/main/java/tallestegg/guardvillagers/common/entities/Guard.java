@@ -839,7 +839,12 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         this.goalSelector.addGoal(0, new FloatGoal(this));
         // Get out of water when idle — move toward land
         this.goalSelector.addGoal(5, new GetOutOfWaterGoal(this, 0.6D));
-        this.targetSelector.addGoal(2, (new HurtByTargetGoal(this, IronGolem.class)).setAlertOthers());
+        // BUG FIX: Exclude Guard.class from HurtByTargetGoal to prevent guard-vs-guard fights.
+        // When a guard accidentally hits another guard (friendly fire), the hit guard
+        // should NOT retaliate against the attacker guard. Only retaliate against
+        // non-guard attackers. IronGolem.class is also excluded to prevent
+        // guard-golem fights from accidental hits.
+        this.targetSelector.addGoal(2, (new HurtByTargetGoal(this, Guard.class, IronGolem.class)).setAlertOthers());
         this.targetSelector.addGoal(3, new HeroHurtByTargetGoal(this));
         this.targetSelector.addGoal(3, new HeroHurtTargetGoal(this));
         this.targetSelector.addGoal(5, new DefendVillageGuardGoal(this));
@@ -879,7 +884,12 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
             double d1 = target.getY(0.3333333333333333D) - abstractarrowentity.getY();
             double d2 = target.getZ() - this.getZ();
             double d3 = Mth.sqrt((float) (d0 * d0 + d2 * d2));
-            abstractarrowentity.shoot(d0, d1 + d3 * (double) 0.2F, d2, 1.6F, 8.0F);
+            // FEATURE: Ranged accuracy improves with guard rank.
+            // Base inaccuracy is 8.0F (same as vanilla skeleton). Each rank reduces it by 2.0F.
+            // Recruit: 8.0F, Soldier: 6.0F, Veteran: 4.0F, Captain: 2.0F (very accurate).
+            float inaccuracy = (float) Math.max(1.0F, GuardConfig.COMMON.rangedAccuracyBase
+                    - this.getGuardRank().level * GuardConfig.COMMON.rangedAccuracyPerRank);
+            abstractarrowentity.shoot(d0, d1 + d3 * (double) 0.2F, d2, 1.6F, inaccuracy);
             this.playSound(SoundEvents.ARROW_SHOOT, 1.0F, 1.0F / (this.getRandom().nextFloat() * 0.4F + 0.8F));
             this.level().addFreshEntity(abstractarrowentity);
             this.damageGuardItem(1, EquipmentSlot.MAINHAND, hand);
@@ -1239,39 +1249,61 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         if (!GuardConfig.COMMON.guardLeveling) return;
         // Only check every 100 ticks (5 seconds)
         if (this.tickCount % 100 != 0) return;
-        // Only captains provide the buff
-        if (this.getGuardRank() != GuardRank.CAPTAIN) return;
 
+        // BUG FIX: Non-captain guards must ALSO run this to clean up any
+        // lingering inspiration buff they may have received from a now-dead
+        // or out-of-range captain. Previously, if a captain died, the buff
+        // was NEVER removed from nearby guards because only captains ran this code.
         double range = GuardConfig.COMMON.captainInspirationRange;
-        // Find nearby guards
-        List<Guard> nearbyGuards = this.level().getEntitiesOfClass(
-                Guard.class,
-                this.getBoundingBox().inflate(range, 4.0D, range),
-                g -> g != this && g.isAlive()
-        );
 
-        // Apply Captain's Inspiration buff to nearby guards in range
-        for (Guard nearby : nearbyGuards) {
-            AttributeInstance dmgAttr = nearby.getAttribute(Attributes.ATTACK_DAMAGE);
-            if (dmgAttr != null && !dmgAttr.hasModifier(CAPTAIN_INSPIRATION_ID)) {
-                dmgAttr.addTransientModifier(new AttributeModifier(
-                        CAPTAIN_INSPIRATION_ID,
-                        GuardConfig.COMMON.captainInspirationDamageBonus,
-                        AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));
+        if (this.getGuardRank() == GuardRank.CAPTAIN) {
+            // Captain: apply buff to nearby guards and remove from out-of-range guards
+            // PERFORMANCE: Combined into a single entity scan instead of two separate scans.
+            List<Guard> nearbyGuards = this.level().getEntitiesOfClass(
+                    Guard.class,
+                    this.getBoundingBox().inflate(range + 10.0D, 6.0D, range + 10.0D),
+                    g -> g != this && g.isAlive()
+            );
+
+            for (Guard nearby : nearbyGuards) {
+                double dist = nearby.distanceTo(this);
+                AttributeInstance dmgAttr = nearby.getAttribute(Attributes.ATTACK_DAMAGE);
+                if (dmgAttr == null) continue;
+
+                if (dist <= range) {
+                    // In range: apply buff if not already applied
+                    if (!dmgAttr.hasModifier(CAPTAIN_INSPIRATION_ID)) {
+                        dmgAttr.addTransientModifier(new AttributeModifier(
+                                CAPTAIN_INSPIRATION_ID,
+                                GuardConfig.COMMON.captainInspirationDamageBonus,
+                                AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));
+                    }
+                } else {
+                    // Out of range: remove buff
+                    if (dmgAttr.hasModifier(CAPTAIN_INSPIRATION_ID)) {
+                        dmgAttr.removeModifier(CAPTAIN_INSPIRATION_ID);
+                    }
+                }
             }
-        }
-
-        // Remove buff from guards that moved out of range
-        List<Guard> allGuardsWithBuff = this.level().getEntitiesOfClass(
-                Guard.class,
-                this.getBoundingBox().inflate(range + 20.0D, 10.0D, range + 20.0D),
-                g -> g != this && g.isAlive() && g.getAttribute(Attributes.ATTACK_DAMAGE) != null
-                        && g.getAttribute(Attributes.ATTACK_DAMAGE).hasModifier(CAPTAIN_INSPIRATION_ID)
-        );
-        for (Guard guard : allGuardsWithBuff) {
-            if (guard.distanceTo(this) > range) {
-                AttributeInstance dmgAttr = guard.getAttribute(Attributes.ATTACK_DAMAGE);
-                if (dmgAttr != null) {
+        } else {
+            // Non-captain: check if we have a stale inspiration buff from a dead/distant captain.
+            // This is the ONLY place that cleans up buffs from dead captains.
+            AttributeInstance dmgAttr = this.getAttribute(Attributes.ATTACK_DAMAGE);
+            if (dmgAttr != null && dmgAttr.hasModifier(CAPTAIN_INSPIRATION_ID)) {
+                // Check if any living captain is in range
+                List<Guard> nearbyCaptains = this.level().getEntitiesOfClass(
+                        Guard.class,
+                        this.getBoundingBox().inflate(range + 5.0D, 6.0D, range + 5.0D),
+                        g -> g != this && g.isAlive() && g.getGuardRank() == GuardRank.CAPTAIN
+                );
+                boolean hasNearbyCaptain = false;
+                for (Guard captain : nearbyCaptains) {
+                    if (captain.distanceTo(this) <= range) {
+                        hasNearbyCaptain = true;
+                        break;
+                    }
+                }
+                if (!hasNearbyCaptain) {
                     dmgAttr.removeModifier(CAPTAIN_INSPIRATION_ID);
                 }
             }
@@ -2464,9 +2496,12 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         public boolean canUse() {
             // If guard has patrol waypoints, use the waypoint system
             if (guard.hasPatrolWaypoints()) {
+                // BUG FIX: Check waypointWaitTicks > 0 means we are WAITING at a waypoint.
+                // The wait timer is decremented in aiStep() even when this goal is not running,
+                // so the guard will properly wait before moving to the next waypoint.
                 return guard.getTarget() == null && !guard.isFollowing() && guard.isPatrolling()
                         && guard.getWaypointWaitTicks() <= 0
-                        && (guard.level().getGameTime() - delayTime) > 200L;
+                        && (guard.level().getGameTime() - delayTime) > 60L;
             }
             // Original behavior: single patrol position
             return guard.getTarget() == null && this.guard.getPatrolPos() != null && !this.guard.blockPosition().equals(this.guard.getPatrolPos()) && !guard.isFollowing() && guard.isPatrolling() && (guard.level().getGameTime() - delayTime) > 200L;
@@ -2480,6 +2515,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
         @Override
         public void start() {
+            this.shouldStop = false;
             if (ticksRan > 200) this.ticksRan = 0;
 
             if (guard.hasPatrolWaypoints()) {
@@ -2507,8 +2543,12 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
             if (guard.hasPatrolWaypoints()) {
                 // Check if guard has reached the current waypoint
                 BlockPos currentWaypoint = guard.getCurrentWaypoint();
-                if (currentWaypoint != null && guard.blockPosition().closerThan(currentWaypoint, 2.0D)) {
-                    // Reached waypoint — wait, then advance to next
+                if (currentWaypoint != null && guard.blockPosition().closerThan(currentWaypoint, 3.0D)) {
+                    // Reached waypoint — set wait timer, then advance to next.
+                    // BUG FIX: advanceToNextWaypoint() already sets waypointWaitTicks,
+                    // so the guard will WAIT at this waypoint before the goal can re-activate.
+                    // The wait timer is decremented in aiStep() every tick, so it works
+                    // even when this goal is not running.
                     BlockPos nextWaypoint = guard.advanceToNextWaypoint();
                     if (nextWaypoint != null) {
                         guard.setPatrolPos(nextWaypoint);
