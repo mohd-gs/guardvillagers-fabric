@@ -15,24 +15,27 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Unified goal that handles BOTH walking toward items AND picking them up.
  * <p>
- * v3.3.5 changes:
- * - CRITICAL FIX: Guards now properly return to wandering after picking up items.
- *   The broad isPotentiallyUseful() filter caused the goal to keep finding items
- *   that weren't upgrades, keeping the goal active and blocking all wandering goals.
- *   Now uses isUpgrade() for scanning/walking decisions — only walks toward items
- *   that are ACTUAL upgrades. The broad filter is only used for the nearby pickup
- *   scan (Phase 1) to catch any items that became upgrades after a previous pickup.
- * - FOOD PRIORITY: Wounded guards (below 75% HP) always walk toward food first.
- *   Healthy guards with shields skip food items (can't pick them up anyway).
- * - ITEM RESERVATION with stale cleanup.
- * - MULTI-PICKUP: Picks up all useful items in range when near.
- * - After all upgrades are picked up → goal stops → wandering/patrol goals activate.
+ * v3.3.6 changes:
+ * - CRITICAL FIX: Shield-food swap loop — wounded guards with shields no longer
+ *   swap the shield out of offhand for food. Instead, food is consumed instantly
+ *   (healing applied directly) while the shield stays in offhand. This prevents
+ *   the infinite loop where: shield→food→shield→food... because dropped items
+ *   land at the guard's feet and get immediately re-picked up.
+ * - SAFEGUARD: Items dropped by this guard (via dropOld) are tracked in
+ *   recentlyDroppedIds and excluded from pickup scans for 60 ticks (3 seconds),
+ *   preventing any dropped item from being immediately re-picked up.
+ * - isUpgrade() for shield: won't consider shield an upgrade if the guard
+ *   currently has food in offhand AND is wounded (guard needs to eat first).
  */
 public class PickupBetterEquipmentGoal extends Goal {
     private final Guard guard;
     private ItemEntity targetItem = null;
     private int tickCounter = 0;
     private int noUpgradeCooldown = 0;
+
+    // Track items recently dropped by this guard to prevent immediate re-pickup
+    private final Set<Integer> recentlyDroppedIds = new HashSet<>();
+    private int droppedCleanupTimer = 0;
 
     // === ITEM RESERVATION SYSTEM ===
     private static final Map<UUID, Integer> reservedItems = new ConcurrentHashMap<>();
@@ -59,10 +62,10 @@ public class PickupBetterEquipmentGoal extends Goal {
         if (guard.isEating()) return false;
         if (isInCombat()) return false;
 
-        // Scan for UPGRADE items only — not just any items
+        // Scan for UPGRADE items only
         List<ItemEntity> upgrades = scanForUpgrades();
         if (upgrades.isEmpty()) {
-            this.noUpgradeCooldown = 60; // 3 seconds — no upgrades nearby, go back to wandering
+            this.noUpgradeCooldown = 60; // 3 seconds — no upgrades nearby
             return false;
         }
 
@@ -125,13 +128,20 @@ public class PickupBetterEquipmentGoal extends Goal {
     public void tick() {
         this.tickCounter++;
 
+        // Clean up recently-dropped tracking periodically (every 3 seconds)
+        if (this.droppedCleanupTimer <= 0) {
+            this.recentlyDroppedIds.clear();
+            this.droppedCleanupTimer = 60;
+        } else {
+            this.droppedCleanupTimer--;
+        }
+
         // Phase 1: Pick up ALL useful items already within reach (broad filter)
-        // This catches items that became upgrades after a previous pickup
-        // (e.g., guard picks up diamond chestplate → their old iron chestplate
-        // is dropped → another guard nearby can now pick up that iron chestplate)
+        // Excludes items recently dropped by this guard to prevent swap loops
         List<ItemEntity> nearbyItems = guard.level().getEntitiesOfClass(
                 ItemEntity.class, guard.getBoundingBox().inflate(2.5D),
                 ie -> ie.isAlive() && !ie.getItem().isEmpty() && isUpgrade(ie.getItem())
+                        && !recentlyDroppedIds.contains(ie.getId())
         );
 
         boolean pickedUpAny = false;
@@ -159,7 +169,6 @@ public class PickupBetterEquipmentGoal extends Goal {
                 // No more upgrades — the goal will stop on next canContinueToUse()
                 this.targetItem = null;
             }
-            // No cooldown — keep picking up while upgrades exist!
             return;
         }
 
@@ -172,8 +181,6 @@ public class PickupBetterEquipmentGoal extends Goal {
 
         double distSq = guard.distanceToSqr(targetItem);
 
-        // We arrived but couldn't equip it — it's not actually an upgrade for us
-        // (shouldn't happen since we filter with isUpgrade, but just in case)
         if (distSq < PICKUP_DISTANCE_SQ) {
             releaseItemReservation(targetItem);
             this.targetItem = null;
@@ -235,21 +242,19 @@ public class PickupBetterEquipmentGoal extends Goal {
 
     /**
      * Scan for items that are ACTUAL UPGRADES for this guard.
-     * Only returns items that the guard would actually equip.
-     * This prevents the guard from walking toward items it can't use,
-     * which would block wandering/patrol goals.
+     * Excludes items recently dropped by this guard to prevent swap loops.
      */
     private List<ItemEntity> scanForUpgrades() {
         return guard.level().getEntitiesOfClass(
                 ItemEntity.class, guard.getBoundingBox().inflate(SCAN_RANGE),
                 ie -> ie.isAlive() && !ie.getItem().isEmpty() && isUpgrade(ie.getItem())
+                        && !recentlyDroppedIds.contains(ie.getId())
         );
     }
 
     /**
      * Check if an item is an ACTUAL UPGRADE for this guard right now.
-     * This is the key filter that decides whether to walk toward an item.
-     * Only returns true if the guard would actually equip this item.
+     * Only returns true if the guard would actually equip/use this item.
      */
     private boolean isUpgrade(ItemStack stack) {
         // Weapon — better than current?
@@ -270,7 +275,14 @@ public class PickupBetterEquipmentGoal extends Goal {
         if (stack.getItem() instanceof ShieldItem) {
             ItemStack offhand = guard.guardInventory.getItem(4);
             if (offhand.isEmpty()) return true;
-            if (!(offhand.getItem() instanceof ShieldItem)) return true; // Have food, want shield
+            if (!(offhand.getItem() instanceof ShieldItem)) {
+                // Offhand has something other than shield (e.g., food)
+                // Don't swap food for shield if wounded — guard needs to eat first!
+                if (isFoodItem(offhand) && guard.getHealth() < guard.getMaxHealth() * 0.75D) {
+                    return false;
+                }
+                return true;
+            }
             if (stack.isEnchanted() && !offhand.isEnchanted()) return true;
             return false;
         }
@@ -314,7 +326,6 @@ public class PickupBetterEquipmentGoal extends Goal {
                 score -= 10000.0D;
             }
             // Armor upgrades get slight priority over weapon upgrades
-            // (a full armor set is more important than a slightly better sword)
             if (isArmorUpgradeFor(item.getItem())) {
                 score -= 500.0D;
             }
@@ -386,6 +397,10 @@ public class PickupBetterEquipmentGoal extends Goal {
             if (isShield) {
                 boolean currentIsShield = currentOffhand.getItem() instanceof ShieldItem;
                 if (!currentIsShield) {
+                    // Don't swap food for shield if wounded — guard needs to eat first!
+                    if (isFoodItem(currentOffhand) && guard.getHealth() < guard.getMaxHealth() * 0.75D) {
+                        return false;
+                    }
                     dropOld(currentOffhand);
                     guard.setItemSlot(EquipmentSlot.OFFHAND, ground.copy());
                     return true;
@@ -403,14 +418,20 @@ public class PickupBetterEquipmentGoal extends Goal {
                 boolean currentIsShield = currentOffhand.getItem() instanceof ShieldItem;
                 boolean currentIsFood = isFoodItem(currentOffhand);
 
-                // Wounded guard: swap shield for food
+                // *** CRITICAL FIX: Wounded guard with shield ***
+                // CONSUME FOOD INSTANTLY — do NOT swap shield out of offhand!
+                // The old code did: dropOld(shield) → setItemSlot(food)
+                // This caused an infinite loop because the dropped shield lands
+                // at the guard's feet (within 2.5 blocks) and gets immediately
+                // re-picked on the next tick, which drops the food, which gets
+                // re-picked, etc. Result: shield→food→shield→food→...
+                // Now: we eat the food instantly, shield stays in offhand.
                 if (currentIsShield && guard.getHealth() < guard.getMaxHealth() * 0.75D) {
-                    dropOld(currentOffhand);
-                    guard.setItemSlot(EquipmentSlot.OFFHAND, ground.copy());
+                    instantlyConsumeFood(ground);
                     return true;
                 }
 
-                // Better food
+                // Better food — swap
                 if (currentIsFood && getFoodValue(ground) > getFoodValue(currentOffhand)) {
                     dropOld(currentOffhand);
                     guard.setItemSlot(EquipmentSlot.OFFHAND, ground.copy());
@@ -429,9 +450,41 @@ public class PickupBetterEquipmentGoal extends Goal {
         return false;
     }
 
+    /**
+     * Instantly consume a food item, applying healing and status effects directly.
+     * Used when a wounded guard with a shield picks up food — instead of swapping
+     * the shield out of the offhand (which causes the shield↔food swap loop), we
+     * just eat the food immediately and keep the shield in offhand.
+     * <p>
+     * This applies:
+     * - Direct healing equal to the food's nutrition value
+     * - Any status effects from the food (e.g., golden apple regeneration)
+     * <p>
+     * The shield stays in the offhand — no swap needed!
+     */
+    private void instantlyConsumeFood(ItemStack foodStack) {
+        net.minecraft.world.food.FoodProperties food = foodStack.get(net.minecraft.core.component.DataComponents.FOOD);
+        if (food != null) {
+            // Apply nutrition as direct healing
+            guard.heal((float) food.nutrition());
+        }
+        // Apply status effects and other food mechanics (golden apple, etc.)
+        // finishUsingItem handles: status effects, container returns (bowl for stew), etc.
+        foodStack.finishUsingItem(guard.level(), guard);
+        // Shield stays in offhand — no swap needed!
+    }
+
+    /**
+     * Drop an old item at the guard's feet. The dropped ItemEntity is tracked
+     * in recentlyDroppedIds so it won't be immediately re-picked up by the
+     * same guard, preventing item swap loops.
+     */
     private void dropOld(ItemStack old) {
         if (!old.isEmpty() && guard.level() instanceof net.minecraft.server.level.ServerLevel sl) {
-            guard.spawnAtLocation(sl, old);
+            ItemEntity dropped = guard.spawnAtLocation(sl, old);
+            if (dropped != null) {
+                recentlyDroppedIds.add(dropped.getId());
+            }
         }
     }
 
