@@ -42,7 +42,7 @@ public class GuardMountHorseGoal extends Goal {
     @Override
     public boolean canUse() {
         if (!GuardConfig.COMMON.guardsAutoMountHorses) return false;
-        if (guard.isVehicle()) return false; // Already riding something
+        if (guard.isPassenger()) return false; // Already riding something (isVehicle() checks if someone rides the GUARD, isPassenger() checks if the GUARD rides something)
         if (guard.isBaby()) return false;
         if (this.cooldown > 0) { this.cooldown--; return false; }
         // Don't mount while actively following a player
