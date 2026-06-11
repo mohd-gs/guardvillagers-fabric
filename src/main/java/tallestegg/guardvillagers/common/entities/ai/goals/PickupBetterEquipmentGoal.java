@@ -15,19 +15,23 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Unified goal that handles BOTH walking toward items AND picking them up.
  * <p>
- * v3.3.3 changes:
- * - MERGED with GuardWalkToItemGoal into one unified goal
- * - ITEM RESERVATION: Guards claim items so they don't all rush the same item.
- *   When Guard A is walking toward Item X, Guard B skips it and targets Item Y.
- * - MULTI-PICKUP: When a guard arrives at an item cluster, it picks up ALL
- *   useful items in range, not just one. This means if you throw 5 armor pieces,
- *   one guard will pick up multiple pieces before moving on.
- * - RE-SCAN ON LOSS: If the target item disappears (another guard took it),
- *   the guard immediately re-scans for other items instead of stopping.
- * - NO COOLDOWN AFTER SUCCESS: After picking up an item, immediately look for
- *   more items. Cooldown only applies when there are no useful items nearby.
- * - PEACETIME: Guards walk toward items up to 10 blocks away.
- * - COMBAT: Guards only grab items within 3 blocks (won't leave a fight).
+ * v3.3.4 changes:
+ * - CRITICAL FIX: Moved from priority 5 to priority 2 — goals at priority 3-5
+ *   (village patrol, stroll, follow shield guard, squad) were constantly overriding
+ *   this goal because they share the MOVE flag and have equal/higher activity.
+ * - CRITICAL FIX: isReservedByOther now checks if the reserver guard is still alive.
+ *   Dead/despawned guards left stale reservations that blocked all other guards forever.
+ * - CRITICAL FIX: Removed tickCount % 10 gate in canUse() — it was causing the goal
+ *   to only activate on specific ticks. If another goal was running on that tick,
+ *   this goal would be skipped entirely for another 10 ticks, creating long gaps
+ *   where no pickup happened at all.
+ * - SIMPLIFIED: Removed over-complicated isUseful() pre-filter. Now ALL items that
+ *   are weapons/armor/shields/food are considered "potentially useful" for walking,
+ *   and tryEquipBetter() handles the actual equip decision. This prevents guards
+ *   from ignoring items because a state check was stale.
+ * - MULTI-PICKUP: When a guard is near items, it picks up ALL useful items in range.
+ * - ITEM RESERVATION: Guards claim items to avoid all rushing the same one.
+ * - RE-SCAN: If target disappears, immediately look for next item.
  */
 public class PickupBetterEquipmentGoal extends Goal {
     private final Guard guard;
@@ -36,16 +40,14 @@ public class PickupBetterEquipmentGoal extends Goal {
     private int noItemCooldown = 0;
 
     // === ITEM RESERVATION SYSTEM ===
-    // Tracks which guard is targeting which item entity.
     // Key = ItemEntity UUID, Value = Guard entity ID
-    // This prevents all guards from rushing the same item.
     private static final Map<UUID, Integer> reservedItems = new ConcurrentHashMap<>();
 
-    private static final double PICKUP_DISTANCE_SQ = 1.8D * 1.8D;
+    private static final double PICKUP_DISTANCE_SQ = 2.5D * 2.5D; // Slightly larger for reliable pickup
     private static final double PEACETIME_SCAN_RANGE = 10.0D;
     private static final double COMBAT_SCAN_RANGE = 3.0D;
-    private static final double WALK_SPEED = 0.7D;
-    private static final int TIMEOUT_TICKS = 200; // 10 seconds max chase
+    private static final double WALK_SPEED = 0.65D;
+    private static final int TIMEOUT_TICKS = 200;
 
     public PickupBetterEquipmentGoal(Guard guard) {
         this.guard = guard;
@@ -62,21 +64,20 @@ public class PickupBetterEquipmentGoal extends Goal {
         if (guard.isBaby()) return false;
         if (guard.isFollowing()) return false;
         if (guard.isEating()) return false;
-        // Check every 10 ticks (0.5 seconds)
-        if (guard.tickCount % 10 != 0) return false;
+        // Don't activate during combat (guards should fight, not loot)
+        if (isInCombat()) return false;
 
-        // Scan for items
+        // Scan for items — no tick gating! The cooldown system handles frequency.
         List<ItemEntity> items = scanForItems();
         if (items.isEmpty()) {
-            this.noItemCooldown = 40; // 2 seconds — no items nearby
+            this.noItemCooldown = 30; // 1.5 seconds — no items nearby
             return false;
         }
 
-        // Pick the best target (closest that isn't reserved by another guard)
+        // Pick the best target
         this.targetItem = pickBestTarget(items);
         if (this.targetItem == null) {
-            // All nearby items are reserved by other guards
-            this.noItemCooldown = 20; // 1 second — recheck soon
+            this.noItemCooldown = 15; // 0.75 seconds — all reserved, recheck soon
             return false;
         }
 
@@ -89,17 +90,15 @@ public class PickupBetterEquipmentGoal extends Goal {
     public boolean canContinueToUse() {
         if (guard.isFollowing() || guard.isEating()) return false;
         if (this.tickCounter > TIMEOUT_TICKS) return false;
+        // Stop if combat started
+        if (isInCombat()) return false;
 
-        // Target item still exists and is alive
+        // Target still valid?
         if (this.targetItem != null && this.targetItem.isAlive()) {
-            // If in combat now and item is far away, give up
-            if (isInCombat() && guard.distanceToSqr(targetItem) > COMBAT_SCAN_RANGE * COMBAT_SCAN_RANGE) {
-                return false;
-            }
             return true;
         }
 
-        // Target disappeared! Re-scan for other items
+        // Target disappeared — re-scan immediately
         List<ItemEntity> items = scanForItems();
         if (!items.isEmpty()) {
             ItemEntity newTarget = pickBestTarget(items);
@@ -111,7 +110,6 @@ public class PickupBetterEquipmentGoal extends Goal {
             }
         }
 
-        // No more items — stop
         return false;
     }
 
@@ -125,7 +123,6 @@ public class PickupBetterEquipmentGoal extends Goal {
 
     @Override
     public void stop() {
-        // Release our reservation
         releaseReservation(guard.getId());
         this.targetItem = null;
         this.tickCounter = 0;
@@ -136,10 +133,10 @@ public class PickupBetterEquipmentGoal extends Goal {
     public void tick() {
         this.tickCounter++;
 
-        // Phase 1: Try to pick up ALL items within pickup range (multi-pickup)
+        // Phase 1: Try to pick up ALL useful items within pickup range (multi-pickup)
         List<ItemEntity> nearbyItems = guard.level().getEntitiesOfClass(
-                ItemEntity.class, guard.getBoundingBox().inflate(2.0D),
-                ie -> ie.isAlive() && !ie.getItem().isEmpty() && isUseful(ie.getItem())
+                ItemEntity.class, guard.getBoundingBox().inflate(2.5D),
+                ie -> ie.isAlive() && !ie.getItem().isEmpty() && isPotentiallyUseful(ie.getItem())
         );
 
         boolean pickedUpAny = false;
@@ -152,13 +149,9 @@ public class PickupBetterEquipmentGoal extends Goal {
             }
         }
 
-        // If we picked something up, immediately re-check for more items nearby
-        // (NO cooldown after success — keep picking up while items are in range!)
         if (pickedUpAny) {
-            // Check if our target item was one of the picked-up items
+            // Target was picked up — re-scan for next
             if (this.targetItem != null && !this.targetItem.isAlive()) {
-                // Target was picked up (by us or someone else)
-                // Re-scan for next target
                 List<ItemEntity> items = scanForItems();
                 if (!items.isEmpty()) {
                     ItemEntity newTarget = pickBestTarget(items);
@@ -171,28 +164,24 @@ public class PickupBetterEquipmentGoal extends Goal {
                     this.targetItem = null;
                 }
             }
+            // Don't set any cooldown — keep picking up!
             return;
         }
 
-        // Phase 2: Walk toward target item if not close enough yet
+        // Phase 2: Walk toward target item
         if (this.targetItem == null || !this.targetItem.isAlive()) {
             return;
         }
 
-        // Look at the target while walking
         guard.getLookControl().setLookAt(targetItem.getX(), targetItem.getY(), targetItem.getZ());
 
         double distSq = guard.distanceToSqr(targetItem);
 
-        // Close enough — we should have picked it up in Phase 1
-        // If not, it might not be useful. Try next item.
+        // We're close but didn't pick it up — it's not useful for us, skip it
         if (distSq < PICKUP_DISTANCE_SQ) {
-            // We're right on top of the item but didn't pick it up
-            // It's not useful for us — mark it and move on
             releaseItemReservation(targetItem);
             this.targetItem = null;
 
-            // Look for another target
             List<ItemEntity> items = scanForItems();
             if (!items.isEmpty()) {
                 ItemEntity newTarget = pickBestTarget(items);
@@ -206,45 +195,45 @@ public class PickupBetterEquipmentGoal extends Goal {
         }
 
         // Continue walking toward the item
-        if (this.tickCounter % 20 == 0 || guard.getNavigation().isDone()) {
+        if (this.tickCounter % 15 == 0 || guard.getNavigation().isDone()) {
             guard.getNavigation().moveTo(targetItem, WALK_SPEED);
         }
     }
 
-    // ========== ITEM RESERVATION SYSTEM ==========
+    // ========== ITEM RESERVATION ==========
 
-    /**
-     * Reserve an item for a specific guard.
-     * This prevents multiple guards from walking toward the same item.
-     */
     private static void reserveItem(ItemEntity item, int guardId) {
         reservedItems.put(item.getUUID(), guardId);
     }
 
-    /**
-     * Release the reservation for a specific item.
-     */
     private static void releaseItemReservation(ItemEntity item) {
         if (item != null) {
             reservedItems.remove(item.getUUID());
         }
     }
 
-    /**
-     * Release ALL reservations held by a specific guard.
-     * Called when the goal stops.
-     */
     private static void releaseReservation(int guardId) {
         reservedItems.entrySet().removeIf(entry -> entry.getValue() == guardId);
     }
 
     /**
-     * Check if an item is reserved by another guard (not this one).
+     * Check if an item is reserved by another guard.
+     * Also validates that the reserver guard is still alive in the world.
+     * Stale reservations from dead/despawned guards are cleaned up.
      */
     private boolean isReservedByOther(ItemEntity item) {
         Integer reserverId = reservedItems.get(item.getUUID());
         if (reserverId == null) return false;
-        return reserverId != guard.getId();
+        if (reserverId == guard.getId()) return false;
+
+        // Check if the reserver guard is still alive and in the world
+        net.minecraft.world.entity.Entity other = guard.level().getEntity(reserverId);
+        if (other == null || !other.isAlive()) {
+            // Stale reservation from a dead/despawned guard — clean it up
+            reservedItems.remove(item.getUUID());
+            return false;
+        }
+        return true;
     }
 
     // ========== SCANNING ==========
@@ -254,45 +243,60 @@ public class PickupBetterEquipmentGoal extends Goal {
     }
 
     /**
-     * Scan for all items within range that this guard might want.
+     * Scan for items within range. Uses a BROAD filter (isPotentiallyUseful)
+     * instead of a strict filter — let tryEquipBetter() decide what's worth equipping.
      */
     private List<ItemEntity> scanForItems() {
-        double range = isInCombat() ? COMBAT_SCAN_RANGE : PEACETIME_SCAN_RANGE;
+        double range = PEACETIME_SCAN_RANGE; // Always full range — combat is blocked in canUse()
         return guard.level().getEntitiesOfClass(
                 ItemEntity.class, guard.getBoundingBox().inflate(range),
-                ie -> ie.isAlive() && !ie.getItem().isEmpty() && isUseful(ie.getItem())
+                ie -> ie.isAlive() && !ie.getItem().isEmpty() && isPotentiallyUseful(ie.getItem())
         );
     }
 
     /**
+     * Broad check: is this item something a guard might want?
+     * Returns true for any weapon, armor, shield, or food.
+     * The actual "is it better than what I have?" check is in tryEquipBetter().
+     *
+     * Why broad instead of strict? Because a strict pre-filter can miss valid items:
+     * - If the guard's state changes between scan and equip (e.g., another guard
+     *   drops an item that makes this one an upgrade), the strict filter would miss it.
+     * - The guard should walk toward ANY potentially useful item and decide at pickup time.
+     */
+    private boolean isPotentiallyUseful(ItemStack stack) {
+        // Weapons
+        if (isWeaponish(stack)) return true;
+        // Armor
+        Equippable equippable = stack.get(net.minecraft.core.component.DataComponents.EQUIPPABLE);
+        if (equippable != null && equippable.slot().getType() == EquipmentSlot.Type.HUMANOID_ARMOR) return true;
+        // Shields
+        if (stack.getItem() instanceof ShieldItem) return true;
+        // Food
+        if (isFoodItem(stack)) return true;
+        return false;
+    }
+
+    /**
      * Pick the best target item from a list.
-     * - Skip items reserved by other guards (anti-crowding)
+     * - Skip items reserved by other guards
      * - Wounded guards prioritize food
-     * - Otherwise, pick the closest item
+     * - Then closest first
      */
     private ItemEntity pickBestTarget(List<ItemEntity> items) {
         ItemEntity best = null;
         double bestScore = Double.MAX_VALUE;
-
         boolean isWounded = guard.getHealth() < guard.getMaxHealth() * 0.75D;
 
         for (ItemEntity item : items) {
-            // Skip items reserved by other guards
             if (isReservedByOther(item)) continue;
 
             double dist = guard.distanceToSqr(item);
-
-            // Score: lower is better
             double score = dist;
 
-            // Wounded guards: food items get priority (subtract large value to sort first)
+            // Wounded guards: food items get priority
             if (isWounded && isFoodItem(item.getItem())) {
                 score -= 10000.0D;
-            }
-
-            // Armor pieces the guard needs get slight priority over duplicates
-            if (isArmorUpgrade(item.getItem())) {
-                score -= 500.0D;
             }
 
             if (score < bestScore) {
@@ -304,67 +308,10 @@ public class PickupBetterEquipmentGoal extends Goal {
         return best;
     }
 
-    // ========== ITEM EVALUATION ==========
-
-    /**
-     * Check if an item is useful for this guard (worth picking up).
-     * This is the gatekeeper — if it returns false, the guard ignores the item entirely.
-     */
-    private boolean isUseful(ItemStack stack) {
-        // Weapons — useful if better than current or no weapon
-        if (isWeaponish(stack)) {
-            ItemStack current = guard.guardInventory.getItem(5);
-            return current.isEmpty() || getWeaponTier(stack) > getWeaponTier(current);
-        }
-
-        // Armor — useful if better than current in that slot or slot is empty
-        Equippable equippable = stack.get(net.minecraft.core.component.DataComponents.EQUIPPABLE);
-        if (equippable != null && equippable.slot().getType() == EquipmentSlot.Type.HUMANOID_ARMOR) {
-            int invIndex = Guard.slotToInventoryIndex(equippable.slot());
-            ItemStack current = guard.guardInventory.getItem(invIndex);
-            return current.isEmpty() || getArmorTier(stack) > getArmorTier(current);
-        }
-
-        // Shields — useful if guard doesn't have one
-        if (stack.getItem() instanceof ShieldItem) {
-            ItemStack offhand = guard.guardInventory.getItem(4);
-            return !(offhand.getItem() instanceof ShieldItem);
-        }
-
-        // Food — always useful if guard has no food
-        // Also useful if current food is worse
-        // Also useful if guard is wounded and has a shield (will swap)
-        if (isFoodItem(stack)) {
-            ItemStack offhand = guard.guardInventory.getItem(4);
-            if (offhand.isEmpty()) return true;
-            if (isFoodItem(offhand)) return getFoodValue(stack) > getFoodValue(offhand);
-            if (offhand.getItem() instanceof ShieldItem && guard.getHealth() < guard.getMaxHealth() * 0.75D) return true;
-        }
-
-        return false;
-    }
-
-    /**
-     * Quick check if an item is an armor upgrade for the guard.
-     */
-    private boolean isArmorUpgrade(ItemStack stack) {
-        Equippable equippable = stack.get(net.minecraft.core.component.DataComponents.EQUIPPABLE);
-        if (equippable != null && equippable.slot().getType() == EquipmentSlot.Type.HUMANOID_ARMOR) {
-            int invIndex = Guard.slotToInventoryIndex(equippable.slot());
-            ItemStack current = guard.guardInventory.getItem(invIndex);
-            return current.isEmpty() || getArmorTier(stack) > getArmorTier(current);
-        }
-        return false;
-    }
-
     // ========== EQUIP LOGIC ==========
 
-    /**
-     * Try to equip an item if it's better than what the guard currently has.
-     * Returns true if the item was picked up (equipped).
-     */
     private boolean tryEquipBetter(ItemStack ground) {
-        // 1. Try weapon slot (mainhand = slot 5)
+        // 1. Weapon (mainhand = slot 5)
         if (isWeaponish(ground)) {
             ItemStack current = guard.guardInventory.getItem(5);
             if (current.isEmpty() || getWeaponTier(ground) > getWeaponTier(current)) {
@@ -374,7 +321,7 @@ public class PickupBetterEquipmentGoal extends Goal {
             }
         }
 
-        // 2. Try armor slots (0-3)
+        // 2. Armor (slots 0-3)
         Equippable equippable = ground.get(net.minecraft.core.component.DataComponents.EQUIPPABLE);
         if (equippable != null) {
             EquipmentSlot slot = equippable.slot();
@@ -389,29 +336,27 @@ public class PickupBetterEquipmentGoal extends Goal {
             }
         }
 
-        // 3. Handle offhand items (shield and food)
+        // 3. Offhand (shield and food)
         boolean isShield = ground.getItem() instanceof ShieldItem;
         boolean isFood = isFoodItem(ground);
 
         if (isShield || isFood) {
             ItemStack currentOffhand = guard.guardInventory.getItem(4);
 
-            // Case A: Empty offhand — always pick up
+            // Empty offhand — always pick up
             if (currentOffhand.isEmpty()) {
                 guard.setItemSlot(EquipmentSlot.OFFHAND, ground.copy());
                 return true;
             }
 
-            // Case B: We found a shield
+            // Shield
             if (isShield) {
                 boolean currentIsShield = currentOffhand.getItem() instanceof ShieldItem;
                 if (!currentIsShield) {
-                    // Currently holding food — swap for shield
                     dropOld(currentOffhand);
                     guard.setItemSlot(EquipmentSlot.OFFHAND, ground.copy());
                     return true;
                 }
-                // Both shields — pick up the new one if enchanted and old one isn't
                 if (ground.isEnchanted() && !currentOffhand.isEnchanted()) {
                     dropOld(currentOffhand);
                     guard.setItemSlot(EquipmentSlot.OFFHAND, ground.copy());
@@ -420,30 +365,26 @@ public class PickupBetterEquipmentGoal extends Goal {
                 return false;
             }
 
-            // Case C: We found food
+            // Food
             if (isFood) {
                 boolean currentIsShield = currentOffhand.getItem() instanceof ShieldItem;
                 boolean currentIsFood = isFoodItem(currentOffhand);
 
-                // If guard is wounded (below 75% health) and current offhand is a shield,
-                // swap: drop shield, pick up food (health is more important!)
+                // Wounded guard: swap shield for food
                 if (currentIsShield && guard.getHealth() < guard.getMaxHealth() * 0.75D) {
                     dropOld(currentOffhand);
                     guard.setItemSlot(EquipmentSlot.OFFHAND, ground.copy());
                     return true;
                 }
 
-                // If current offhand is food, swap for better food
-                if (currentIsFood) {
-                    if (getFoodValue(ground) > getFoodValue(currentOffhand)) {
-                        dropOld(currentOffhand);
-                        guard.setItemSlot(EquipmentSlot.OFFHAND, ground.copy());
-                        return true;
-                    }
-                    return false;
+                // Better food
+                if (currentIsFood && getFoodValue(ground) > getFoodValue(currentOffhand)) {
+                    dropOld(currentOffhand);
+                    guard.setItemSlot(EquipmentSlot.OFFHAND, ground.copy());
+                    return true;
                 }
 
-                // If current offhand is something else, replace with food
+                // Unknown item in offhand — replace with food
                 if (!currentIsShield && !currentIsFood) {
                     dropOld(currentOffhand);
                     guard.setItemSlot(EquipmentSlot.OFFHAND, ground.copy());
@@ -461,7 +402,7 @@ public class PickupBetterEquipmentGoal extends Goal {
         }
     }
 
-    // ========== TIER HELPERS ==========
+    // ========== HELPERS ==========
 
     private static boolean isFoodItem(ItemStack stack) {
         return stack.has(net.minecraft.core.component.DataComponents.FOOD);

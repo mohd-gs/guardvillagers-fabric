@@ -829,9 +829,10 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         // Feature 7: Squad system — captain organizes nearby guards
         this.goalSelector.addGoal(4, new GuardSquadGoal(this));
         // Feature 9: Auto equipment upgrade — walks toward + picks up items
-        // Handles both peacetime walking (10 blocks) and combat pickup (3 blocks)
-        // Includes item reservation to prevent all guards rushing the same item
-        this.goalSelector.addGoal(5, new PickupBetterEquipmentGoal(this));
+        // Priority 2: Must be higher than village stroll (5/8) and patrol (3/5)
+        // because those goals constantly override lower-priority goals.
+        // Only activates during peacetime (no combat target).
+        this.goalSelector.addGoal(2, new PickupBetterEquipmentGoal(this));
         // Feature 10: Share food with wounded guards
         this.goalSelector.addGoal(1, new GuardShareFoodGoal(this));
         this.goalSelector.addGoal(8, new GuardLookAtAndStopMovingWhenBeingTheInteractionTarget(this));
