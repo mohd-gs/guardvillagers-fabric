@@ -19,7 +19,7 @@ import net.minecraft.server.level.ServerLevel;
 @Mixin(LivingEntity.class)
 public class LivingEntityDamageMixin {
 
-    @Inject(method = "damage", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "hurtServer", at = @At("HEAD"), cancellable = true)
     private void guardvillagers$onDamagePre(ServerLevel level, DamageSource source, float amount, CallbackInfoReturnable<Boolean> cir) {
         LivingEntity self = (LivingEntity) (Object) this;
         if (!GuardConfig.COMMON.guardArrowsHurtVillagers) {
