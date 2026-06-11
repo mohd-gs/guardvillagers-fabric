@@ -2,37 +2,50 @@ package tallestegg.guardvillagers.common.entities.ai.goals;
 
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.*;
 import net.minecraft.world.item.equipment.Equippable;
+import net.minecraft.world.level.pathfinder.Path;
 import tallestegg.guardvillagers.common.entities.Guard;
 import tallestegg.guardvillagers.configuration.GuardConfig;
-import net.minecraft.world.entity.ai.goal.Goal;
 
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.List;
 
 /**
- * Goal that allows guards to pick up better equipment from the ground.
+ * Goal that allows guards to detect, walk toward, and pick up better equipment
+ * and food from the ground.
  * <p>
- * v3.2.1 changes:
- * - CRITICAL FIX: Moved scan-and-equip logic from tick() to start().
- *   The previous version put logic in tick() but the Goal system never called it
- *   because canContinueToUse() defaulted to canUse() which returned false immediately
- *   (due to the tickCount % 60 check), causing the goal to start and stop before
- *   tick() was ever executed.
- * - Now uses a one-shot pattern: canUse() detects items, start() picks them up,
- *   canContinueToUse() returns false so the goal releases immediately.
- * - Reduced scan interval from 60 to 20 ticks (3s → 1s) for more responsive pickup.
- * - Removed combat restriction: guards now pick up items even during combat
- *   (they need shields/food most during fights!).
+ * v3.3.2 changes:
+ * - COMPLETE REWRITE: Guard now WALKS toward items instead of only picking up
+ *   what's already within 3 blocks. Previously guards would never approach items.
+ * - FOOD PICKUP: Guards now actively seek and pick up food from the ground,
+ *   even if they already have a shield in offhand. Food is stored in offhand
+ *   (shield is moved to dropped if needed). Guards prioritize food when wounded.
+ * - PEACETIME BEHAVIOR: During peacetime (no combat target), guards will
+ *   actively approach items within 8 blocks and walk to pick them up.
+ * - COMBAT BEHAVIOR: During combat, guards only pick up items within 3 blocks
+ *   (don't walk away from enemies to grab loot).
+ * - CONSISTENCY: All guards now reliably pick up better equipment. The old
+ *   one-shot pattern was unreliable because goal priority conflicts caused
+ *   many guards to never execute the pickup logic.
+ * - Movement uses pathfinding (navigation.moveTo) for smooth walking around obstacles.
  */
 public class PickupBetterEquipmentGoal extends Goal {
     private final Guard guard;
     private int cooldown = 0;
+    private ItemEntity targetItem = null;
+    private int pathRetryCooldown = 0;
+    private static final double PICKUP_DISTANCE = 1.8D;  // Distance at which item is grabbed
+    private static final double PEACETIME_SCAN_RANGE = 8.0D;  // Detection range when idle
+    private static final double COMBAT_SCAN_RANGE = 3.0D;  // Detection range during combat
+    private static final double WALK_SPEED = 0.7D;  // Walking speed toward items
 
     public PickupBetterEquipmentGoal(Guard guard) {
         this.guard = guard;
+        this.setFlags(EnumSet.of(Goal.Flag.MOVE));
     }
 
     @Override
@@ -45,45 +58,121 @@ public class PickupBetterEquipmentGoal extends Goal {
         if (guard.isBaby()) return false;
         // Don't pick up equipment while following (player might be leading them away)
         if (guard.isFollowing()) return false;
-        // Check every 20 ticks (1 second) for responsive pickup
-        if (guard.tickCount % 20 != 0) return false;
-        // Pre-scan: only return true if there are items nearby to consider
-        double range = GuardConfig.COMMON.equipmentPickupRange;
+        // Don't interrupt eating
+        if (guard.isEating()) return false;
+        // Check every 10 ticks (0.5 seconds) for responsive pickup
+        if (guard.tickCount % 10 != 0) return false;
+
+        double range = isInCombat() ? COMBAT_SCAN_RANGE : PEACETIME_SCAN_RANGE;
         List<ItemEntity> items = guard.level().getEntitiesOfClass(
                 ItemEntity.class, guard.getBoundingBox().inflate(range),
-                ie -> !ie.getItem().isEmpty() && ie.isAlive()
+                ie -> !ie.getItem().isEmpty() && ie.isAlive() && isInteresting(ie.getItem())
         );
-        return !items.isEmpty();
+        if (items.isEmpty()) return false;
+
+        // Pick the closest interesting item
+        items.sort(Comparator.comparingDouble(guard::distanceToSqr));
+        this.targetItem = items.get(0);
+        return true;
     }
 
     @Override
     public boolean canContinueToUse() {
-        // One-shot goal: start() does all the work, then we're done.
-        return false;
+        if (this.targetItem == null || !this.targetItem.isAlive()) {
+            return false;
+        }
+        if (guard.isFollowing() || guard.isEating()) {
+            return false;
+        }
+        // If we're in combat now and the item is far away, give up
+        if (isInCombat() && guard.distanceToSqr(targetItem) > COMBAT_SCAN_RANGE * COMBAT_SCAN_RANGE) {
+            return false;
+        }
+        // Don't chase items forever — timeout after 10 seconds
+        if (this.pathRetryCooldown > 200) {
+            return false;
+        }
+        return true;
     }
 
     @Override
     public void start() {
-        double range = GuardConfig.COMMON.equipmentPickupRange;
-        List<ItemEntity> items = guard.level().getEntitiesOfClass(
-                ItemEntity.class, guard.getBoundingBox().inflate(range),
-                ie -> !ie.getItem().isEmpty() && ie.isAlive()
-        );
-
-        // Sort by distance so we pick up the closest item first
-        items.sort(Comparator.comparingDouble(guard::distanceToSqr));
-
-        for (ItemEntity itemEntity : items) {
-            ItemStack ground = itemEntity.getItem();
-            if (tryEquipBetter(ground)) {
-                itemEntity.discard();
-                this.cooldown = 20; // 1 second cooldown after successful pickup
-                return;
-            }
-        }
-        this.cooldown = 40; // 2 second cooldown when nothing was picked up
+        this.pathRetryCooldown = 0;
+        moveToTarget();
     }
 
+    @Override
+    public void stop() {
+        this.targetItem = null;
+        this.pathRetryCooldown = 0;
+        guard.getNavigation().stop();
+    }
+
+    @Override
+    public void tick() {
+        this.pathRetryCooldown++;
+
+        if (this.targetItem == null || !this.targetItem.isAlive()) {
+            return;
+        }
+
+        double distSq = guard.distanceToSqr(targetItem);
+
+        // Close enough to pick up
+        if (distSq < PICKUP_DISTANCE * PICKUP_DISTANCE) {
+            if (tryEquipBetter(targetItem.getItem())) {
+                targetItem.discard();
+                this.cooldown = 20; // 1 second cooldown after successful pickup
+            } else {
+                // Item wasn't useful after all — ignore it for a while
+                this.cooldown = 60; // 3 seconds
+            }
+            this.targetItem = null;
+            return;
+        }
+
+        // Continue walking toward the item
+        // Re-path every 20 ticks or if we've arrived at our current path node
+        if (this.pathRetryCooldown % 20 == 0 || guard.getNavigation().isDone()) {
+            moveToTarget();
+        }
+    }
+
+    private void moveToTarget() {
+        if (targetItem == null) return;
+        guard.getNavigation().moveTo(targetItem, WALK_SPEED);
+    }
+
+    /**
+     * Check if the guard is currently in combat (has a living target and is aggressive).
+     */
+    private boolean isInCombat() {
+        return guard.getTarget() != null && guard.getTarget().isAlive() && guard.isAggressive();
+    }
+
+    /**
+     * Check if an item on the ground is worth the guard's attention.
+     * This filters out junk items so guards don't chase worthless things.
+     */
+    private boolean isInteresting(ItemStack stack) {
+        // Weapons
+        if (isWeaponish(stack)) return true;
+        // Armor
+        Equippable equippable = stack.get(net.minecraft.core.component.DataComponents.EQUIPPABLE);
+        if (equippable != null && equippable.slot().getType() == EquipmentSlot.Type.HUMANOID_ARMOR) {
+            return true;
+        }
+        // Shields
+        if (stack.getItem() instanceof ShieldItem) return true;
+        // Food — always interesting! Guards need food to heal.
+        if (stack.has(net.minecraft.core.component.DataComponents.FOOD)) return true;
+        return false;
+    }
+
+    /**
+     * Try to equip an item if it's better than what the guard currently has.
+     * Returns true if the item was picked up (equipped).
+     */
     private boolean tryEquipBetter(ItemStack ground) {
         // 1. Try weapon slot (mainhand = slot 5)
         if (isWeaponish(ground)) {
@@ -110,42 +199,68 @@ public class PickupBetterEquipmentGoal extends Goal {
             }
         }
 
-        // 3. Try offhand (slot 4) — shield or food
-        // Guards ALWAYS want a shield if they don't have one.
-        // If they already have food but find better food (more hunger), swap it.
-        // If they have no offhand item, pick up anything useful.
+        // 3. Handle offhand items (shield and food)
         boolean isShield = ground.getItem() instanceof ShieldItem;
         boolean isFood = ground.has(net.minecraft.core.component.DataComponents.FOOD);
 
         if (isShield || isFood) {
-            ItemStack current = guard.guardInventory.getItem(4);
-            if (current.isEmpty()) {
-                // Empty offhand — always pick up shield or food
+            ItemStack currentOffhand = guard.guardInventory.getItem(4);
+
+            // Case A: Empty offhand — always pick up
+            if (currentOffhand.isEmpty()) {
                 guard.setItemSlot(EquipmentSlot.OFFHAND, ground.copy());
                 return true;
             }
-            // Shield logic: always prefer shield over food in offhand
+
+            // Case B: We found a shield
             if (isShield) {
-                boolean currentIsShield = current.getItem() instanceof ShieldItem;
+                boolean currentIsShield = currentOffhand.getItem() instanceof ShieldItem;
                 if (!currentIsShield) {
-                    // Currently holding food, swap for shield (shields are more useful)
-                    dropOld(current);
+                    // Currently holding food — swap for shield (shields save lives in combat)
+                    // But keep the food by dropping it gently (another guard might pick it up)
+                    dropOld(currentOffhand);
                     guard.setItemSlot(EquipmentSlot.OFFHAND, ground.copy());
                     return true;
                 }
-                // Both are shields — pick up the new one if it's enchanted or the old one is damaged
-                if (ground.isEnchanted() && !current.isEnchanted()) {
-                    dropOld(current);
+                // Both shields — pick up the new one if enchanted and old one isn't
+                if (ground.isEnchanted() && !currentOffhand.isEnchanted()) {
+                    dropOld(currentOffhand);
                     guard.setItemSlot(EquipmentSlot.OFFHAND, ground.copy());
                     return true;
                 }
+                // Don't pick up a duplicate shield
+                return false;
             }
-            // Food logic: swap for better food if current offhand is also food
-            if (isFood && !(current.getItem() instanceof ShieldItem)) {
-                int groundFood = getFoodValue(ground);
-                int currentFood = getFoodValue(current);
-                if (groundFood > currentFood) {
-                    dropOld(current);
+
+            // Case C: We found food
+            if (isFood) {
+                boolean currentIsShield = currentOffhand.getItem() instanceof ShieldItem;
+                boolean currentIsFood = isFoodItem(currentOffhand);
+
+                // If guard is wounded (below 75% health) and current offhand is a shield,
+                // temporarily swap: drop shield, pick up food (health is more important!)
+                if (currentIsShield && guard.getHealth() < guard.getMaxHealth() * 0.75D) {
+                    dropOld(currentOffhand);
+                    guard.setItemSlot(EquipmentSlot.OFFHAND, ground.copy());
+                    return true;
+                }
+
+                // If current offhand is food, swap for better food
+                if (currentIsFood) {
+                    int groundFood = getFoodValue(ground);
+                    int currentFood = getFoodValue(currentOffhand);
+                    if (groundFood > currentFood) {
+                        dropOld(currentOffhand);
+                        guard.setItemSlot(EquipmentSlot.OFFHAND, ground.copy());
+                        return true;
+                    }
+                    // Same or worse food — skip
+                    return false;
+                }
+
+                // If current offhand is something else weird, replace with food
+                if (!currentIsShield && !currentIsFood) {
+                    dropOld(currentOffhand);
                     guard.setItemSlot(EquipmentSlot.OFFHAND, ground.copy());
                     return true;
                 }
@@ -161,12 +276,16 @@ public class PickupBetterEquipmentGoal extends Goal {
         }
     }
 
+    /**
+     * Check if an item is food using DataComponents.FOOD.
+     */
+    private static boolean isFoodItem(ItemStack stack) {
+        return stack.has(net.minecraft.core.component.DataComponents.FOOD);
+    }
+
     private boolean isWeaponish(ItemStack stack) {
         Item item = stack.getItem();
-        // MC 26.1.2: SwordItem class was removed — swords are now plain Item instances.
-        // Detect swords by registry name instead of instanceof.
         if (item instanceof ProjectileWeaponItem || item instanceof AxeItem || item instanceof TridentItem) return true;
-        // MaceItem is a new weapon type in MC 26.1.2
         if (item instanceof MaceItem) return true;
         String itemId = BuiltInRegistries.ITEM.getKey(item).toString();
         return itemId.contains("_sword");
@@ -185,59 +304,36 @@ public class PickupBetterEquipmentGoal extends Goal {
 
     /**
      * Get the tier level of a weapon based on its material.
-     * Uses registry name mapping for reliability across MC versions.
-     * Falls back to rarity + enchantment for modded items.
      */
     private int getWeaponTier(ItemStack stack) {
         String itemId = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
-        // Netherite weapons (highest tier)
         if (itemId.contains("netherite_sword") || itemId.contains("netherite_axe")) return 6;
-        // Diamond weapons
         if (itemId.contains("diamond_sword") || itemId.contains("diamond_axe")) return 5;
-        // Iron weapons
         if (itemId.contains("iron_sword") || itemId.contains("iron_axe")) return 4;
-        // Copper weapons (MC 26.1.2 adds copper tier)
         if (itemId.contains("copper_sword") || itemId.contains("copper_axe")) return 4;
-        // Stone weapons
         if (itemId.contains("stone_sword") || itemId.contains("stone_axe")) return 3;
-        // Golden weapons (low tier despite gold rarity)
         if (itemId.contains("golden_sword") || itemId.contains("golden_axe")) return 2;
-        // Wooden weapons (lowest tier)
         if (itemId.contains("wooden_sword") || itemId.contains("wooden_axe")) return 2;
-        // Mace — high-tier weapon (comparable to diamond)
         if (stack.getItem() instanceof MaceItem) return 5;
-        // Special ranged weapons — tier based on general effectiveness
         if (stack.getItem() instanceof TridentItem) return 5;
         if (stack.getItem() instanceof CrossbowItem) return 4;
         if (stack.getItem() instanceof BowItem) return 3;
-        // Fallback for modded items: use rarity + enchantment bonus
         return stack.getRarity().ordinal() + (stack.isEnchanted() ? 1 : 0);
     }
 
     /**
      * Get the tier level of armor based on its material.
-     * Uses registry name mapping for reliability across MC versions.
-     * Falls back to rarity + enchantment for modded items.
      */
     private int getArmorTier(ItemStack stack) {
         String itemId = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
-        // Netherite armor (highest tier)
         if (itemId.contains("netherite")) return 6;
-        // Diamond armor
         if (itemId.contains("diamond")) return 5;
-        // Iron armor
         if (itemId.contains("iron")) return 4;
-        // Copper armor (MC 26.1.2 adds copper tier, comparable to iron)
         if (itemId.contains("copper")) return 4;
-        // Chainmail armor
         if (itemId.contains("chainmail") || itemId.contains("chain")) return 3;
-        // Turtle helmet (comparable to iron)
         if (itemId.contains("turtle")) return 3;
-        // Golden armor (low tier despite gold rarity)
         if (itemId.contains("golden")) return 2;
-        // Leather armor (lowest tier)
         if (itemId.contains("leather")) return 1;
-        // Fallback for modded items: use rarity + enchantment bonus
         return stack.getRarity().ordinal() + (stack.isEnchanted() ? 1 : 0);
     }
 }

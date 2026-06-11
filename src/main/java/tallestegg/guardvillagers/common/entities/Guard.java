@@ -87,6 +87,7 @@ import tallestegg.guardvillagers.common.entities.ai.goals.GuardMountHorseGoal;
 import tallestegg.guardvillagers.common.entities.ai.goals.PickupBetterEquipmentGoal;
 import tallestegg.guardvillagers.common.entities.ai.goals.GuardHelpNearbyGuardGoal;
 import tallestegg.guardvillagers.common.entities.ai.goals.GuardShareFoodGoal;
+import tallestegg.guardvillagers.common.entities.ai.goals.GuardWalkToItemGoal;
 import tallestegg.guardvillagers.common.entities.ai.goals.GetOutOfWaterGoal;
 import tallestegg.guardvillagers.common.entities.ai.goals.GuardSquadGoal;
 import tallestegg.guardvillagers.configuration.GuardConfig;
@@ -828,8 +829,10 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         this.goalSelector.addGoal(3, new GuardMountHorseGoal(this));
         // Feature 7: Squad system — captain organizes nearby guards
         this.goalSelector.addGoal(4, new GuardSquadGoal(this));
-        // Feature 9: Auto equipment upgrade
+        // Feature 9: Auto equipment upgrade — picks up items when close enough
         this.goalSelector.addGoal(1, new PickupBetterEquipmentGoal(this));
+        // Feature 9b: Walk toward food/equipment during peacetime
+        this.goalSelector.addGoal(5, new GuardWalkToItemGoal(this));
         // Feature 10: Share food with wounded guards
         this.goalSelector.addGoal(1, new GuardShareFoodGoal(this));
         this.goalSelector.addGoal(8, new GuardLookAtAndStopMovingWhenBeingTheInteractionTarget(this));
