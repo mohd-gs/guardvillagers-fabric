@@ -26,6 +26,7 @@ import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.ai.control.MoveControl;
 import net.minecraft.world.entity.ai.goal.*;
 import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
@@ -687,6 +688,10 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         this.resolveSquadLeader();
         this.updateSwingTime();
         super.aiStep();
+        // Mount navigation: when riding a horse (or any Mob), forward the
+        // guard's desired movement to the mount. Without this, the horse just
+        // stands still or uses its own AI, and the guard can't go anywhere.
+        this.tickMountNavigation();
     }
 
     @Override
@@ -1206,6 +1211,66 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
     public boolean isMounted() {
         return this.getVehicle() != null;
+    }
+
+    /**
+     * Forward the guard's desired movement to the mounted horse.
+     * Without this, horses just stand still or use their own AI when a guard
+     * rides them, because Minecraft only lets Player passengers control horses.
+     * <p>
+     * How it works:
+     * 1. The guard's goals have already run by this point in aiStep().
+     * 2. The guard's MoveControl has been updated with the desired position.
+     * 3. We read that position and forward it to the horse's navigation.
+     * 4. The horse then walks toward where the guard wants to go.
+     */
+    private void tickMountNavigation() {
+        if (!this.isVehicle()) return;
+        Entity vehicle = this.getVehicle();
+        if (!(vehicle instanceof Mob mount)) return;
+
+        LivingEntity target = this.getTarget();
+
+        if (target != null && target.isAlive()) {
+            // Combat: make the horse chase the attack target
+            // For ranged guards, maintain attack distance; for melee, get close
+            double dist = this.distanceTo(target);
+            boolean isRanged = this.getMainHandItem().getItem() instanceof BowItem
+                    || this.getMainHandItem().getItem() instanceof CrossbowItem;
+            double desiredDist = isRanged ? 10.0D : 2.0D;
+
+            if (dist > desiredDist + 2.0D) {
+                mount.getNavigation().moveTo(target, 1.2D);
+            } else if (dist < desiredDist - 2.0D && isRanged) {
+                // Ranged guard too close — back up via horse
+                net.minecraft.world.phys.Vec3 away = net.minecraft.world.entity.ai.util.DefaultRandomPos
+                        .getPosAway(this, 8, 4, target.position());
+                if (away != null) {
+                    mount.getNavigation().moveTo(away.x, away.y, away.z, 1.2D);
+                }
+            } else {
+                mount.getNavigation().stop();
+            }
+            // Make the horse face the target
+            mount.getLookControl().setLookAt(target, 30.0F, 30.0F);
+            return;
+        }
+
+        // Peacetime: forward the guard's MoveControl target to the horse
+        MoveControl mc = this.getMoveControl();
+        if (mc.hasWanted()) {
+            // Guard wants to move somewhere — forward to horse navigation
+            // Throttle to every 10 ticks to avoid recomputing horse paths too often
+            if (this.tickCount % 10 == 0 || mount.getNavigation().isDone()) {
+                mount.getNavigation().moveTo(mc.getWantedX(), mc.getWantedY(), mc.getWantedZ(),
+                        Math.max(mc.getSpeedModifier(), 1.0D));
+            }
+        } else {
+            // Guard doesn't want to move — stop the horse
+            if (this.tickCount % 20 == 0) {
+                mount.getNavigation().stop();
+            }
+        }
     }
 
     // === Feature 6: Wounded Behavior ===
@@ -2392,14 +2457,31 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
         @Override
         public void stop() {
-            if (!GuardConfig.COMMON.GuardRaiseShield) guard.stopUsingItem();
+            // BUG FIX: ALWAYS lower the shield when the goal stops.
+            // The old code only lowered the shield when GuardRaiseShield was FALSE,
+            // meaning when the config was enabled (normal case), the shield stayed
+            // raised forever after this goal stopped. This caused bow guards to
+            // permanently freeze — GuardBowAttack.canUse() checks !isBlocking(),
+            // so a permanently raised shield blocks the bow goal from ever activating.
+            // Now the shield is always lowered when the goal stops, regardless of config.
+            guard.stopUsingItem();
         }
 
         protected boolean raiseShield() {
             LivingEntity target = guard.getTarget();
             if (target != null && guard.shieldCoolDown == 0) {
                 boolean ranged = guard.getMainHandItem().getItem() instanceof CrossbowItem || guard.getMainHandItem().getItem() instanceof BowItem;
-                return guard.distanceTo(target) <= 4.0D || target instanceof Creeper || target instanceof RangedAttackMob && target.distanceTo(guard) >= 5.0D && !ranged || target instanceof Ravager || GuardConfig.COMMON.GuardRaiseShield;
+                double dist = guard.distanceTo(target);
+
+                // Bow guards: only raise shield when enemies are very close (melee range).
+                // At range, the bow guard should be shooting, not blocking.
+                // Without this check, bow guards would raise shield at any distance
+                // when GuardRaiseShield config is enabled, making them unable to shoot.
+                if (ranged && dist > 5.0D) {
+                    return false; // Too far for shield — use ranged weapon instead
+                }
+
+                return dist <= 4.0D || target instanceof Creeper || target instanceof RangedAttackMob && dist >= 5.0D && !ranged || target instanceof Ravager || GuardConfig.COMMON.GuardRaiseShield;
             }
             return false;
         }

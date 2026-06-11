@@ -14,10 +14,26 @@ import tallestegg.guardvillagers.configuration.GuardConfig;
 import java.util.EnumSet;
 import java.util.List;
 
+/**
+ * Goal that makes guards automatically mount nearby horses during peacetime.
+ * <p>
+ * v3.3.7 fixes:
+ * - CRITICAL FIX: canContinueToUse() previously returned false when the guard
+ *   was within 2 blocks of the horse (distance > 2.0D check). This meant that
+ *   as soon as the guard reached the horse, the goal would stop and call stop()
+ *   with a 400-tick cooldown, BEFORE tick() could execute the mounting code.
+ *   The guard NEVER actually mounted the horse! Now canContinueToUse() returns
+ *   true when close (so tick() can mount), and only returns false after a
+ *   successful mount or if the horse becomes invalid.
+ * - Tame the horse when mounting (otherwise the horse might buck the guard off).
+ * - Reduced scan interval from 400 to 200 ticks (10s → still low priority but
+ *   not so sluggish).
+ */
 public class GuardMountHorseGoal extends Goal {
     private final Guard guard;
     private LivingEntity targetMount;
     private int cooldown = 0;
+    private boolean mounted = false;
 
     public GuardMountHorseGoal(Guard guard) {
         this.guard = guard;
@@ -33,26 +49,22 @@ public class GuardMountHorseGoal extends Goal {
         // Don't try to mount horses while in combat or following
         if (guard.getTarget() != null) return false;
         if (guard.isFollowing()) return false;
-        // PERFORMANCE: Only check every 400 ticks (20 seconds) instead of 200.
-        // Horse mounting is very low priority - guards don't need to check
-        // frequently for available horses.
-        if (guard.tickCount % 400 != 0) return false;
+        // PERFORMANCE: Only check every 200 ticks (10 seconds)
+        if (guard.tickCount % 200 != 0) return false;
 
-        // Search for any rideable entity nearby (horses, donkeys, etc.)
-        // PERFORMANCE: Use a smaller search radius (6 blocks instead of 8) and
-        // check the entity type via EntityType comparison instead of string contains.
+        // Search for any rideable entity nearby
         List<LivingEntity> mounts = guard.level().getEntitiesOfClass(
-                LivingEntity.class, guard.getBoundingBox().inflate(6),
+                LivingEntity.class, guard.getBoundingBox().inflate(8),
                 e -> e.isAlive() && !e.isVehicle() && isMountableType(e) && !(e instanceof net.minecraft.world.entity.player.Player)
         );
         if (mounts.isEmpty()) return false;
-        this.targetMount = mounts.get(0);
-        return true;
+        // Pick the closest mount
+        this.targetMount = mounts.stream()
+                .min((a, b) -> Double.compare(guard.distanceTo(a), guard.distanceTo(b)))
+                .orElse(null);
+        return this.targetMount != null;
     }
 
-    // PERFORMANCE: Replace string-contains check with proper type check.
-    // The old code used e.getType().toString().contains("horse") which is slow
-    // and imprecise (would match "seahorse" or any modded entity with "horse" in name).
     private static boolean isMountableType(LivingEntity e) {
         return e.getType() == EntityType.HORSE
                 || e.getType() == EntityType.DONKEY
@@ -63,36 +75,65 @@ public class GuardMountHorseGoal extends Goal {
 
     @Override
     public boolean canContinueToUse() {
-        return targetMount != null && targetMount.isAlive() && !targetMount.isVehicle() && guard.distanceTo(targetMount) > 2.0D;
+        if (this.mounted) return false; // Successfully mounted — goal is done
+        if (this.targetMount == null || !this.targetMount.isAlive() || this.targetMount.isVehicle()) return false;
+        // Continue even when close — tick() needs to execute the mounting code
+        return true;
+    }
+
+    @Override
+    public void start() {
+        this.mounted = false;
+        if (this.targetMount != null) {
+            guard.getNavigation().moveTo(this.targetMount, 1.0D);
+        }
     }
 
     @Override
     public void stop() {
         this.targetMount = null;
-        this.cooldown = 400; // 20 second cooldown after failing
+        // Only set cooldown if we didn't successfully mount
+        if (!this.mounted) {
+            this.cooldown = 200; // 10 second cooldown after failing
+        } else {
+            this.cooldown = 0; // No cooldown after successful mount
+        }
+        this.mounted = false;
     }
 
     @Override
     public void tick() {
         if (targetMount == null) return;
-        guard.getNavigation().moveTo(targetMount, 1.0D);
-        if (guard.distanceTo(targetMount) <= 2.0D) {
+
+        double dist = guard.distanceTo(targetMount);
+
+        if (dist <= 2.5D) {
+            // Close enough to mount!
             boolean success = guard.startRiding(targetMount, true, true);
             if (success) {
-                // Feature 6 (Advanced Cavalry): Equip horse armor from guard's inventory
-                equipHorseArmor(targetMount);
+                // Tame the horse so it doesn't buck the guard off
+                if (targetMount instanceof AbstractHorse horse) {
+                    horse.setTamed(true);
+                    // Equip horse armor from guard's inventory
+                    equipHorseArmor(horse);
+                }
+                this.mounted = true;
             }
             this.targetMount = null;
+            return;
+        }
+
+        // Walk toward the horse
+        if (guard.getNavigation().isDone() || guard.tickCount % 20 == 0) {
+            guard.getNavigation().moveTo(targetMount, 1.0D);
         }
     }
 
     /**
-     * Feature 6 (Advanced Cavalry): When a guard mounts a horse,
-     * check if they have spare armor in inventory and equip the best on the horse.
+     * When a guard mounts a horse, check if they have spare armor in
+     * inventory and equip the best on the horse.
      */
-    private void equipHorseArmor(LivingEntity mount) {
-        if (!(mount instanceof AbstractHorse horse)) return;
-
+    private void equipHorseArmor(AbstractHorse horse) {
         // Find the best horse armor in the guard's inventory
         ItemStack bestArmor = ItemStack.EMPTY;
         int bestArmorSlot = -1;
@@ -110,9 +151,7 @@ public class GuardMountHorseGoal extends Goal {
         }
 
         if (!bestArmor.isEmpty() && bestArmorSlot >= 0) {
-            // Equip the armor on the horse using the proper method
             horse.equipBodyArmor(null, bestArmor.copy());
-            // Remove from guard's inventory
             guard.guardInventory.setItem(bestArmorSlot, ItemStack.EMPTY);
         }
     }
