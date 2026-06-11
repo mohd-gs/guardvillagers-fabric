@@ -220,6 +220,20 @@ public class GuardConfig {
         public double maceDamageBonus = 0.25;
         public int axeShieldDisableSeconds = 5;
 
+        // Weapon-Specific Behavior (new)
+        public boolean weaponSpecificBehavior = true;
+        public boolean guardFlanking = true;
+
+        // Anti-Creeper Behavior (new)
+        public boolean antiCreeperBehavior = true;
+
+        // Military Formations (new)
+        public double formationRange = 12.0;
+        public double formationSpacing = 1.5;
+
+        // Target Prioritization (new)
+        public boolean smartTargetPrioritization = true;
+
         public void fromJson(JsonObject obj) {
             RaidAnimals = getBoolSafe(obj, "RaidAnimals", RaidAnimals);
             WitchesVillager = getBoolSafe(obj, "WitchesVillager", WitchesVillager);
@@ -307,6 +321,12 @@ public class GuardConfig {
             axeVsShieldBonus = getDoubleSafe(obj, "axeVsShieldBonus", axeVsShieldBonus);
             maceDamageBonus = getDoubleSafe(obj, "maceDamageBonus", maceDamageBonus);
             axeShieldDisableSeconds = getIntSafe(obj, "axeShieldDisableSeconds", axeShieldDisableSeconds);
+            weaponSpecificBehavior = getBoolSafe(obj, "weaponSpecificBehavior", weaponSpecificBehavior);
+            guardFlanking = getBoolSafe(obj, "guardFlanking", guardFlanking);
+            antiCreeperBehavior = getBoolSafe(obj, "antiCreeperBehavior", antiCreeperBehavior);
+            formationRange = getDoubleSafe(obj, "formationRange", formationRange);
+            formationSpacing = getDoubleSafe(obj, "formationSpacing", formationSpacing);
+            smartTargetPrioritization = getBoolSafe(obj, "smartTargetPrioritization", smartTargetPrioritization);
         }
 
         public JsonObject toJson() {
@@ -397,6 +417,12 @@ public class GuardConfig {
             obj.addProperty("axeVsShieldBonus", axeVsShieldBonus);
             obj.addProperty("maceDamageBonus", maceDamageBonus);
             obj.addProperty("axeShieldDisableSeconds", axeShieldDisableSeconds);
+            obj.addProperty("weaponSpecificBehavior", weaponSpecificBehavior);
+            obj.addProperty("guardFlanking", guardFlanking);
+            obj.addProperty("antiCreeperBehavior", antiCreeperBehavior);
+            obj.addProperty("formationRange", formationRange);
+            obj.addProperty("formationSpacing", formationSpacing);
+            obj.addProperty("smartTargetPrioritization", smartTargetPrioritization);
             return obj;
         }
     }

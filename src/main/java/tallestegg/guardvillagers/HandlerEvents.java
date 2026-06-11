@@ -280,7 +280,10 @@ public class HandlerEvents {
         guard.setDropChance(EquipmentSlot.MAINHAND, 1.0F);
         guard.setDropChance(EquipmentSlot.OFFHAND, 1.0F);
         guard.getGossips().add(player.getUUID(), GossipType.MINOR_POSITIVE, GuardConfig.COMMON.reputationRequirement);
-        villager.level().addFreshEntity(guard);
+        // 26.1.x: addFreshEntity() is only on ServerLevel, not Level
+        if (villager.level() instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+            serverLevel.addFreshEntity(guard);
+        }
         villager.discard();
         if (player instanceof ServerPlayer serverPlayer) {
             CriteriaTriggers.SUMMONED_ENTITY.trigger(serverPlayer, guard);

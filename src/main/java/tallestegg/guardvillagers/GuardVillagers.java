@@ -71,11 +71,9 @@ public class GuardVillagers implements ModInitializer {
     }
 
     public static String removeModIdFromVillagerType(String stringWithModId) {
-        String[] parts = stringWithModId.split(":");
-        if (parts.length <= 1)
-            return parts[0];
-        else
-            return parts[1];
+        // Use indexOf instead of split to handle strings with multiple colons correctly
+        int idx = stringWithModId.indexOf(':');
+        return idx >= 0 ? stringWithModId.substring(idx + 1) : stringWithModId;
     }
 
     /**

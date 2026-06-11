@@ -10,6 +10,9 @@ accessible class net/minecraft/client/gui/Gui$HeartType
 # MeleeAttackGoal.path is private
 accessible field net/minecraft/world/entity/ai/goal/MeleeAttackGoal path Lnet/minecraft/world/level/pathfinder/Path;
 
+# MeleeAttackGoal.ticksUntilNextAttack is private
+accessible field net/minecraft/world/entity/ai/goal/MeleeAttackGoal ticksUntilNextAttack I
+
 # ServerPlayer private members
 accessible field net/minecraft/server/level/ServerPlayer containerCounter I
 accessible method net/minecraft/server/level/ServerPlayer nextContainerCounter ()V

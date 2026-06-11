@@ -38,7 +38,10 @@ public class PickupBetterEquipmentGoal extends Goal {
     private int droppedCleanupTimer = 0;
 
     // === ITEM RESERVATION SYSTEM ===
+    // Maps item UUID → guard entity ID. Timestamps are tracked for expiry.
     private static final Map<UUID, Integer> reservedItems = new ConcurrentHashMap<>();
+    private static final Map<UUID, Long> reservationTimestamps = new ConcurrentHashMap<>();
+    private static final long RESERVATION_TTL_MS = 30_000L; // 30 seconds max reservation
 
     private static final double PICKUP_DISTANCE_SQ = 2.5D * 2.5D;
     private static final double SCAN_RANGE = 10.0D;
@@ -208,19 +211,40 @@ public class PickupBetterEquipmentGoal extends Goal {
 
     private static void reserveItem(ItemEntity item, int guardId) {
         reservedItems.put(item.getUUID(), guardId);
+        reservationTimestamps.put(item.getUUID(), System.currentTimeMillis());
     }
 
     private static void releaseItemReservation(ItemEntity item) {
         if (item != null) {
             reservedItems.remove(item.getUUID());
+            reservationTimestamps.remove(item.getUUID());
         }
     }
 
     private static void releaseReservation(int guardId) {
-        reservedItems.entrySet().removeIf(entry -> entry.getValue() == guardId);
+        reservedItems.entrySet().removeIf(entry -> {
+            if (entry.getValue() == guardId) {
+                reservationTimestamps.remove(entry.getKey());
+                return true;
+            }
+            return false;
+        });
     }
 
     private boolean isReservedByOther(ItemEntity item) {
+        // Periodic cleanup: remove expired reservations (items that were never picked up
+        // because they despawned, were destroyed, or the guard died/unloaded)
+        long now = System.currentTimeMillis();
+        if (guard.tickCount % 200 == 0) {
+            reservationTimestamps.entrySet().removeIf(entry -> {
+                if (now - entry.getValue() > RESERVATION_TTL_MS) {
+                    reservedItems.remove(entry.getKey());
+                    return true;
+                }
+                return false;
+            });
+        }
+
         Integer reserverId = reservedItems.get(item.getUUID());
         if (reserverId == null) return false;
         if (reserverId == guard.getId()) return false;
@@ -229,6 +253,7 @@ public class PickupBetterEquipmentGoal extends Goal {
         net.minecraft.world.entity.Entity other = guard.level().getEntity(reserverId);
         if (other == null || !other.isAlive()) {
             reservedItems.remove(item.getUUID());
+            reservationTimestamps.remove(item.getUUID());
             return false;
         }
         return true;

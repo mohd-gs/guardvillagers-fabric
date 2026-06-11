@@ -6,7 +6,11 @@
     "VillagerGoalPackagesMixin",
     "DefendVillageGoalGolemMixin",
     "SinglePoolElementMixin",
-    "MobSetTargetMixin"
+    "MobSetTargetMixin",
+    "LivingEntityDamageMixin",
+    "LivingEntityHurtPostMixin",
+    "ServerLevelMixin",
+    "ServerPlayerAccessor"
   ],
   "injectors": {
     "defaultRequire": 1

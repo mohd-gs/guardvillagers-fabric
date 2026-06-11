@@ -104,7 +104,7 @@ public class GuardShareFoodGoal extends Goal {
         );
         droppedFood.setPickUpDelay(0); // Allow instant pickup
         droppedFood.setUnlimitedLifetime(); // Don't despawn quickly
-        guard.level().addFreshEntity(droppedFood);
+        serverLevel.addFreshEntity(droppedFood);
 
         // Set 5-minute cooldown
         this.cooldown = COOLDOWN_TICKS;

@@ -90,6 +90,11 @@ import tallestegg.guardvillagers.common.entities.ai.goals.GuardHelpNearbyGuardGo
 import tallestegg.guardvillagers.common.entities.ai.goals.GuardShareFoodGoal;
 import tallestegg.guardvillagers.common.entities.ai.goals.GetOutOfWaterGoal;
 import tallestegg.guardvillagers.common.entities.ai.goals.GuardSquadGoal;
+import tallestegg.guardvillagers.common.entities.ai.goals.WeaponBehavior;
+import tallestegg.guardvillagers.common.entities.ai.goals.GuardFormationGoal;
+import tallestegg.guardvillagers.common.entities.ai.goals.AntiCreeperGoal;
+import tallestegg.guardvillagers.common.entities.ai.goals.GuardFlankingGoal;
+import tallestegg.guardvillagers.common.entities.ai.goals.TargetPrioritizationGoal;
 import tallestegg.guardvillagers.configuration.GuardConfig;
 import tallestegg.guardvillagers.loot_tables.GuardLootTables;
 import tallestegg.guardvillagers.networking.GuardOpenInventoryPacket;
@@ -198,7 +203,8 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         return new GuardGroundPathNavigation(this, level);
     }
 
-    // 26.1.x: VillagerType.byBiome() returns ResourceKey<VillagerType> - uses identifier() for the variant name
+    // 26.1.x: VillagerType.byBiome() returns ResourceKey<VillagerType>
+    // In MC 26.1.x (1.21.4+), ResourceKey uses location() instead of identifier()
     public static String getVariantFromBiome(LevelAccessor world, BlockPos pos) {
         ResourceKey<VillagerType> type = VillagerType.byBiome(world.getBiome(pos));
         return GuardVillagers.removeModIdFromVillagerType(type.identifier().toString());
@@ -296,12 +302,14 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
             }
         }
         if (input.keySet().contains("equipment")) {
-            for (EquipmentSlot slot : EquipmentSlot.values()) {
-                if (slot.getType() == EquipmentSlot.Type.HUMANOID_ARMOR || slot.getType() == EquipmentSlot.Type.HAND) {
-                    ItemStack stackFromslot = input.read("equipment", EntityEquipment.CODEC).get().get(slot);
-                    this.guardInventory.setItem(Guard.slotToInventoryIndex(slot), stackFromslot);
+            input.read("equipment", EntityEquipment.CODEC).ifPresent(equipment -> {
+                for (EquipmentSlot slot : EquipmentSlot.values()) {
+                    if (slot.getType() == EquipmentSlot.Type.HUMANOID_ARMOR || slot.getType() == EquipmentSlot.Type.HAND) {
+                        ItemStack stackFromslot = equipment.get(slot);
+                        this.guardInventory.setItem(Guard.slotToInventoryIndex(slot), stackFromslot);
+                    }
                 }
-            }
+            });
         }
         this.readPersistentAngerSaveData(this.level(), input);
         // Load gossip data
@@ -806,11 +814,17 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         this.goalSelector.addGoal(0, new KickGoal(this));
         this.goalSelector.addGoal(0, new GuardEatFoodGoal(this));
         this.goalSelector.addGoal(0, new RaiseShieldGoal(this));
+        // Anti-Creeper: highest priority after survival goals — flee charging creepers
+        this.goalSelector.addGoal(1, new AntiCreeperGoal(this));
         this.goalSelector.addGoal(1, new GuardRunToEatGoal(this));
+        this.goalSelector.addGoal(2, new GuardRetreatGoal(this));
+        this.goalSelector.addGoal(2, new PickupBetterEquipmentGoal(this));
         this.goalSelector.addGoal(3, new RangedCrossbowAttackPassiveGoal<>(this, 1.0D, (float) GuardConfig.COMMON.guardCrossbowAttackRadius));
         this.goalSelector.addGoal(3, new PassiveMobSpearUseGoal<>(this, 1.0D, 0.8D, 10.0F, 2.0F));
         this.goalSelector.addGoal(3, new GuardBowAttack(this, 1.0D, 20, 15.0F));
         this.goalSelector.addGoal(3, new GuardMeleeGoal(this, 1.0D, true));
+        // Flanking behavior: guards try to circle around enemies
+        this.goalSelector.addGoal(3, new GuardFlankingGoal(this));
         this.goalSelector.addGoal(4, new FollowHeroGoal(this, 1.0F, 10.0F, 4.0F));
         if (GuardConfig.COMMON.GuardsRunFromPolarBears)
             this.goalSelector.addGoal(4, new AvoidEntityGoal<>(this, PolarBear.class, 12.0F, 1.0D, 1.4D));
@@ -818,7 +832,8 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         if (GuardConfig.COMMON.GuardsOpenDoors)
             this.goalSelector.addGoal(4, new GuardInteractDoorGoal(this, true));
         if (GuardConfig.COMMON.GuardFormation)
-            this.goalSelector.addGoal(6, new FollowShieldGuards(this));
+            // Replaced FollowShieldGuards with full formation system
+            this.goalSelector.addGoal(6, new GuardFormationGoal(this));
         this.goalSelector.addGoal(3, new WalkBackToCheckPointGoal(this, 0.6D));
         if (GuardConfig.COMMON.guardPatrolAroundVillageWorkstations)
             this.goalSelector.addGoal(5, new GolemRandomStrollInVillageGoal(this, 0.6D));
@@ -827,49 +842,42 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         this.goalSelector.addGoal(8, new WaterAvoidingRandomStrollGoal(this, 0.6D));
         this.goalSelector.addGoal(8, new LookAtPlayerGoal(this, AbstractVillager.class, 8.0F));
         this.goalSelector.addGoal(8, new LookAtPlayerGoal(this, Player.class, 8.0F));
-        // Feature 2: Retreat goal for ranged guards
-        this.goalSelector.addGoal(2, new GuardRetreatGoal(this));
         // Feature 5: Auto-mount horses (priority 5 = peacetime, avoids conflict
         // with WalkBackToCheckPointGoal at priority 3 which also uses MOVE flag)
         this.goalSelector.addGoal(5, new GuardMountHorseGoal(this));
         // Feature 7: Squad system — captain organizes nearby guards
         this.goalSelector.addGoal(4, new GuardSquadGoal(this));
-        // Feature 9: Auto equipment upgrade — walks toward + picks up items
-        // Priority 2: Must be higher than village stroll (5/8) and patrol (3/5)
-        // because those goals constantly override lower-priority goals.
-        // Only activates during peacetime (no combat target).
-        this.goalSelector.addGoal(2, new PickupBetterEquipmentGoal(this));
         // Feature 10: Share food with wounded guards
         this.goalSelector.addGoal(1, new GuardShareFoodGoal(this));
         this.goalSelector.addGoal(8, new GuardLookAtAndStopMovingWhenBeingTheInteractionTarget(this));
         // FloatGoal at priority 0 (highest) — same as Pillager, Vindicator, etc.
-        // Guards ALWAYS float on water. They can still fight enemies at the surface
-        // but will never sink and drown. This matches vanilla illager behavior.
         this.goalSelector.addGoal(0, new FloatGoal(this));
         // Get out of water when idle — move toward land
         this.goalSelector.addGoal(5, new GetOutOfWaterGoal(this, 0.6D));
         // BUG FIX: Exclude Guard.class from HurtByTargetGoal to prevent guard-vs-guard fights.
-        // When a guard accidentally hits another guard (friendly fire), the hit guard
-        // should NOT retaliate against the attacker guard. Only retaliate against
-        // non-guard attackers. IronGolem.class is also excluded to prevent
-        // guard-golem fights from accidental hits.
         this.targetSelector.addGoal(2, (new HurtByTargetGoal(this, Guard.class, IronGolem.class)).setAlertOthers());
         this.targetSelector.addGoal(3, new HeroHurtByTargetGoal(this));
         this.targetSelector.addGoal(3, new HeroHurtTargetGoal(this));
         this.targetSelector.addGoal(5, new DefendVillageGuardGoal(this));
-        // BUG FIX: Guard-to-guard target sharing — when a guard is fighting,
-        // nearby idle guards will prioritize helping by targeting the same enemy.
-        // This fixes the issue where large groups of guards would stand idle
-        // while a few fought, because there was no mechanism for guards to
-        // alert each other about threats.
+        // Guard-to-guard target sharing — nearby idle guards help fight
         this.targetSelector.addGoal(4, new GuardHelpNearbyGuardGoal(this));
         if (GuardConfig.COMMON.AttackAllMobs) {
-            this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, Mob.class, 5, true, true, (target, serverLevel) -> target instanceof Enemy && !GuardConfig.COMMON.isBlackListed(GuardVillagers.getEntityTypeId(target))));
+            // Smart target prioritization: replaces basic NearestAttackableTargetGoal
+            if (GuardConfig.COMMON.smartTargetPrioritization) {
+                this.targetSelector.addGoal(5, new TargetPrioritizationGoal(this, 5, true, (target, serverLevel) -> target instanceof Enemy && !GuardConfig.COMMON.isBlackListed(GuardVillagers.getEntityTypeId(target))));
+            } else {
+                this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, Mob.class, 5, true, true, (target, serverLevel) -> target instanceof Enemy && !GuardConfig.COMMON.isBlackListed(GuardVillagers.getEntityTypeId(target))));
+            }
         } else {
             this.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, Ravager.class, true));
             this.targetSelector.addGoal(4, new NearestAttackableTargetGoal<>(this, Witch.class, true));
-            this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, Raider.class, true));
-            this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, Zombie.class, true, (target, serverLevel) -> !(target instanceof ZombifiedPiglin)));
+            if (GuardConfig.COMMON.smartTargetPrioritization) {
+                this.targetSelector.addGoal(5, new TargetPrioritizationGoal(this, 5, true, (target, serverLevel) -> target instanceof Raider && !GuardConfig.COMMON.isBlackListed(GuardVillagers.getEntityTypeId(target))));
+                this.targetSelector.addGoal(5, new TargetPrioritizationGoal(this, 10, true, (target, serverLevel) -> target instanceof Zombie && !(target instanceof ZombifiedPiglin) && !GuardConfig.COMMON.isBlackListed(GuardVillagers.getEntityTypeId(target))));
+            } else {
+                this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, Raider.class, true));
+                this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, Zombie.class, true, (target, serverLevel) -> !(target instanceof ZombifiedPiglin)));
+            }
         }
         this.targetSelector.addGoal(4, new NearestAttackableTargetGoal<>(this, Player.class, 10, true, false, this::isAngryAt));
         this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, LivingEntity.class, 5, true, true, (target, serverLevel) -> GuardConfig.COMMON.isWhiteListed(GuardVillagers.getEntityTypeId(target))));
@@ -900,7 +908,10 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
                     - this.getGuardRank().level * GuardConfig.COMMON.rangedAccuracyPerRank);
             abstractarrowentity.shoot(d0, d1 + d3 * (double) 0.2F, d2, 1.6F, inaccuracy);
             this.playSound(SoundEvents.ARROW_SHOOT, 1.0F, 1.0F / (this.getRandom().nextFloat() * 0.4F + 0.8F));
-            this.level().addFreshEntity(abstractarrowentity);
+            // 26.1.x: addFreshEntity() is only on ServerLevel, not Level
+            if (this.level() instanceof ServerLevel serverLevel) {
+                serverLevel.addFreshEntity(abstractarrowentity);
+            }
             this.damageGuardItem(1, EquipmentSlot.MAINHAND, hand);
         }
     }
@@ -1095,7 +1106,10 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
     }
 
     public static boolean isConsumable(ItemStack stack) {
-        return stack.getUseAnimation() == ItemUseAnimation.EAT || stack.getUseAnimation() == ItemUseAnimation.DRINK && !(stack.getItem() instanceof SplashPotionItem);
+        // Explicit parentheses for clarity: EAT items are always consumable;
+        // DRINK items are consumable only if not a splash potion (which should be thrown, not drunk)
+        return stack.getUseAnimation() == ItemUseAnimation.EAT
+                || (stack.getUseAnimation() == ItemUseAnimation.DRINK && !(stack.getItem() instanceof SplashPotionItem));
     }
 
     // === Feature 1: Guard Leveling ===
@@ -1226,7 +1240,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
      * 4. The horse then walks toward where the guard wants to go.
      */
     private void tickMountNavigation() {
-        if (!this.isVehicle()) return;
+        if (!this.isPassenger()) return;
         Entity vehicle = this.getVehicle();
         if (!(vehicle instanceof Mob mount)) return;
 
@@ -1703,17 +1717,20 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
     public static class GuardMeleeGoal extends MeleeAttackGoal {
         private static final double DEFAULT_ATTACK_REACH = Math.sqrt(2.04F) - (double) 0.6F;
         public final Guard guard;
+        private int shieldRaiseDelay = 0;
 
         @Override
         public void start() {
             super.start();
             this.guard.setAggressive(true);
+            this.shieldRaiseDelay = 0;
         }
 
         @Override
         public void stop() {
             super.stop();
             this.guard.setAggressive(false);
+            this.shieldRaiseDelay = 0;
         }
 
         public GuardMeleeGoal(Guard guard, double speedIn, boolean useLongMemory) {
@@ -1735,11 +1752,65 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         public void tick() {
             LivingEntity target = guard.getTarget();
             if (target != null) {
-                if (target.distanceTo(guard) <= 3.0D) {
-                    guard.getMoveControl().strafe(-2.0F, 0.0F);
-                    guard.lookAt(target, 30.0F, 30.0F);
+                WeaponBehavior.WeaponType weaponType = WeaponBehavior.getWeaponType(guard);
+                double dist = target.distanceTo(guard);
+
+                // === WEAPON-SPECIFIC COMBAT POSITIONING ===
+                if (GuardConfig.COMMON.weaponSpecificBehavior) {
+                    double optimalDist = WeaponBehavior.getOptimalCombatDistance(guard);
+
+                    if (weaponType == WeaponBehavior.WeaponType.SPEAR && dist <= optimalDist + 0.5D) {
+                        // Spear guards: stab and step back (hit-and-run)
+                        if (dist <= 2.5D) {
+                            guard.getNavigation().stop();
+                            guard.lookAt(target, 30.0F, 30.0F);
+                        }
+                    } else if (WeaponBehavior.shouldStrafe(guard) && dist <= optimalDist + 1.0D) {
+                        // Sword/spear guards: circle strafe around the target
+                        float strafeDir = WeaponBehavior.getStrafeDirection(guard);
+                        guard.getMoveControl().strafe(0.5F, strafeDir);
+                        guard.lookAt(target, 30.0F, 30.0F);
+                    } else if (weaponType == WeaponBehavior.WeaponType.AXE && guard.isBerserker()) {
+                        // Berserker axes: charge straight in, no retreating
+                        if (dist > 2.0D) {
+                            guard.getNavigation().moveTo(target, 1.2D);
+                        } else {
+                            guard.getNavigation().stop();
+                            guard.lookAt(target, 30.0F, 30.0F);
+                        }
+                    } else if (weaponType == WeaponBehavior.WeaponType.MACE) {
+                        // Mace guards: aggressive push forward
+                        if (dist > 2.0D) {
+                            guard.getNavigation().moveTo(target, 1.1D);
+                        } else {
+                            guard.getNavigation().stop();
+                            guard.lookAt(target, 30.0F, 30.0F);
+                        }
+                    } else {
+                        // Default melee behavior
+                        if (dist <= optimalDist) {
+                            guard.getNavigation().stop();
+                            guard.lookAt(target, 30.0F, 30.0F);
+                        }
+                    }
+                } else {
+                    // Original behavior (no weapon specialization)
+                    if (path != null && dist <= 2.5D) guard.getNavigation().stop();
                 }
-                if (path != null && target.distanceTo(guard) <= 2.5D) guard.getNavigation().stop();
+
+                // === SHIELD BETWEEN ATTACKS ===
+                // Sword+shield and spear+shield guards raise their shield between attacks
+                if (WeaponBehavior.shouldShieldBetweenAttacks(guard) && this.ticksUntilNextAttack > 5) {
+                    this.shieldRaiseDelay++;
+                    if (this.shieldRaiseDelay > 5 && !guard.isBlocking() && guard.shieldCoolDown == 0) {
+                        guard.startUsingItem(InteractionHand.OFF_HAND);
+                    }
+                } else if (guard.isBlocking() && this.ticksUntilNextAttack <= 5) {
+                    // Lower shield when about to attack
+                    guard.stopUsingItem();
+                    this.shieldRaiseDelay = 0;
+                }
+
                 super.tick();
             }
         }
@@ -1747,6 +1818,11 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         @Override
         protected void checkAndPerformAttack(LivingEntity enemy) {
             if (canPerformAttack(enemy)) {
+                // Lower shield before attacking
+                if (guard.isBlocking()) {
+                    guard.stopUsingItem();
+                }
+
                 this.resetAttackCooldown();
                 this.guard.stopUsingItem();
                 if (guard.shieldCoolDown == 0) this.guard.shieldCoolDown = 8;
@@ -1754,12 +1830,22 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
                 if (this.guard.level() instanceof ServerLevel serverLevel) {
                     this.guard.doHurtTarget(serverLevel, enemy);
                 }
+                this.shieldRaiseDelay = 0; // Reset shield delay after attack
+
+                // Apply weapon-specific attack cooldown for next attack
+                if (GuardConfig.COMMON.weaponSpecificBehavior) {
+                    int weaponCooldown = WeaponBehavior.getAttackCooldown(WeaponBehavior.getWeaponType(guard));
+                    this.ticksUntilNextAttack = weaponCooldown;
+                }
             }
         }
 
         @Override
         protected boolean canPerformAttack(LivingEntity mob) {
-            return this.isTimeToAttack() && this.mobHitBox(this.mob).inflate(0.65).intersects(this.mobHitBox(mob)) && this.mob.getSensing().hasLineOfSight(mob);
+            // Weapon-specific reach bonus for spears/tridents
+            double reachBonus = WeaponBehavior.getAttackReachBonus(guard);
+            double inflateAmount = 0.65D + reachBonus;
+            return this.isTimeToAttack() && this.mobHitBox(this.mob).inflate(inflateAmount).intersects(this.mobHitBox(mob)) && this.mob.getSensing().hasLineOfSight(mob);
         }
 
         protected AABB mobHitBox(LivingEntity mob) {
@@ -1857,8 +1943,11 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
                 }
 
                 // Retreat behavior: if target is too close, move away (kiting)
-                boolean tooClose = distance < GuardConfig.COMMON.archerRetreatDistance
-                        && GuardConfig.COMMON.weaponSpecialization
+                // IMPROVED: Use weapon-specific minimum combat distance instead of
+                // a single config value. Bow guards maintain 5+ blocks, crossbow 4+.
+                double minCombatDist = WeaponBehavior.getMinCombatDistance(guard);
+                boolean tooClose = distance < minCombatDist
+                        && GuardConfig.COMMON.weaponSpecificBehavior
                         && !guard.isWounded();
 
                 if (tooClose && !guard.isPatrolling()) {
@@ -2409,7 +2498,17 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
         @Override
         public boolean canUse() {
-            return guard.getTarget() != null && guard.getTarget().distanceTo(guard) <= 2.5D && guard.getMainHandItem().getItem().useOnRelease(guard.getMainHandItem()) && !guard.isBlocking() && guard.kickCoolDown == 0;
+            if (guard.getTarget() == null || guard.getTarget().distanceTo(guard) > 2.5D) return false;
+            if (guard.isBlocking()) return false;
+            if (guard.kickCoolDown != 0) return false;
+            // Only kick when holding a ranged weapon (bow/crossbow) — these guards
+            // can't melee effectively, so kicking is their close-range defense.
+            // Melee guards (sword/axe/mace) should use their weapons instead.
+            ItemStack mainHand = guard.getMainHandItem();
+            boolean isRanged = mainHand.getItem() instanceof BowItem || mainHand.getItem() instanceof CrossbowItem;
+            // Also allow kicking if the item has useOnRelease (like trident)
+            boolean isUseOnRelease = mainHand.getItem().useOnRelease(mainHand);
+            return isRanged || isUseOnRelease;
         }
 
         @Override

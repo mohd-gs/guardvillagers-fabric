@@ -17,7 +17,7 @@ public class GuardRetreatGoal extends Goal {
 
     @Override
     public boolean canUse() {
-        if (!GuardConfig.COMMON.weaponSpecialization) return false;
+        if (!GuardConfig.COMMON.weaponSpecificBehavior) return false;
         if (!guard.isHoldingRangedWeapon()) return false;
         // Bow guards handle retreat within GuardBowAttack (kiting while shooting).
         // This goal handles retreat for crossbow and trident guards only.
@@ -28,7 +28,9 @@ public class GuardRetreatGoal extends Goal {
         if (target == null) return false;
         // PERFORMANCE: Only check distance every 10 ticks
         if (guard.tickCount % 10 != 0) return false;
-        return guard.distanceTo(target) < GuardConfig.COMMON.archerRetreatDistance;
+        // IMPROVED: Use weapon-specific minimum distance instead of flat config value
+        double retreatDist = WeaponBehavior.getMinCombatDistance(guard);
+        return guard.distanceTo(target) < retreatDist;
     }
 
     @Override
@@ -36,8 +38,9 @@ public class GuardRetreatGoal extends Goal {
         LivingEntity target = guard.getTarget();
         if (target == null) return false;
         if (!guard.isHoldingRangedWeapon()) return false;
-        // Continue retreating until we're at a safe distance (1.5x the retreat threshold)
-        return guard.distanceTo(target) < GuardConfig.COMMON.archerRetreatDistance * 1.5D;
+        // IMPROVED: Continue retreating until at weapon's optimal distance
+        double safeDist = WeaponBehavior.getOptimalCombatDistance(guard);
+        return guard.distanceTo(target) < safeDist;
     }
 
     @Override
