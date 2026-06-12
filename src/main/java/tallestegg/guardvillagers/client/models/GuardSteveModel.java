@@ -25,10 +25,10 @@ public class GuardSteveModel extends HumanoidModel<GuardRenderState> {
     public static LayerDefinition createMesh() {
         MeshDefinition meshdefinition = PlayerModel.createMesh(CubeDeformation.NONE, false);
         PartDefinition partdefinition = meshdefinition.getRoot();
-        // Banner on back for Steve model
+        // Banner on back for Steve model — centered, large banner like Pillager captain
         PartDefinition body = partdefinition.getChild("body");
-        body.addOrReplaceChild("banner", CubeListBuilder.create().texOffs(0, 0).addBox(-3.0F, -8.0F, 0.0F, 6, 12, 0.5F,
-                new CubeDeformation(0.0F)), PartPose.offsetAndRotation(-3.5F, 3.0F, 2.5F, 0.0F, 0.0F, 0.0F));
+        body.addOrReplaceChild("banner", CubeListBuilder.create().texOffs(0, 0).addBox(-5.0F, -12.0F, 0.0F, 10, 16, 0.5F,
+                new CubeDeformation(0.0F)), PartPose.offsetAndRotation(0.0F, 5.0F, 2.5F, 0.0F, 0.0F, 0.0F));
         return LayerDefinition.create(meshdefinition, 64, 64);
     }
 

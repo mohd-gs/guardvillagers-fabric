@@ -20,6 +20,7 @@ import net.fabricmc.fabric.api.creativetab.v1.CreativeModeTabEvents;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tallestegg.guardvillagers.GuardSounds;
+import tallestegg.guardvillagers.common.commands.GuardCommands;
 import tallestegg.guardvillagers.common.entities.Guard;
 import tallestegg.guardvillagers.configuration.GuardConfig;
 import tallestegg.guardvillagers.loot_tables.GuardLootTables;
@@ -41,6 +42,7 @@ public class GuardVillagers implements ModInitializer {
         GuardStats.register();
         GuardLootTables.register();
         GuardNetworking.registerServerReceivers();
+        GuardCommands.register();
 
         FabricDefaultAttributeRegistry.register(GuardEntityType.GUARD, Guard.createAttributes());
 

@@ -38,11 +38,11 @@ public class GuardModel extends HumanoidModel<GuardRenderState> {
                 .addBox(-1.0F, -2.0F, -2.0F, 4, 12, 4, new CubeDeformation(0.0F)), PartPose.offset(5.0F, 2.0F, 0.0F));
         torso.addOrReplaceChild("quiver", CubeListBuilder.create().texOffs(100, 0).addBox(-2.5F, -2.0F, 0.0F, 5, 10, 5,
                 new CubeDeformation(0.0F)), PartPose.offsetAndRotation(0.5F, 3.0F, 2.3F, 0.0F, 0.0F, 0.2617993877991494F));
-        // Banner on back — a thin vertical rectangle positioned behind the body
-        // It's offset to the left side to not overlap with the quiver
+        // Banner on back — a large vertical banner centered on the guard's back
+        // Positioned behind the torso center, similar to Pillager captain banner
         // Visible when the guard has a banner in slot 6, hidden otherwise
-        torso.addOrReplaceChild("banner", CubeListBuilder.create().texOffs(110, 20).addBox(-3.0F, -8.0F, 0.0F, 6, 12, 0.5F,
-                new CubeDeformation(0.0F)), PartPose.offsetAndRotation(-3.5F, 3.0F, 2.5F, 0.0F, 0.0F, 0.0F));
+        torso.addOrReplaceChild("banner", CubeListBuilder.create().texOffs(110, 20).addBox(-5.0F, -12.0F, 0.0F, 10, 16, 0.5F,
+                new CubeDeformation(0.0F)), PartPose.offsetAndRotation(0.0F, 5.0F, 2.5F, 0.0F, 0.0F, 0.0F));
         head.addOrReplaceChild("nose",
                 CubeListBuilder.create().texOffs(54, 0).addBox(-1.0F, -1.0F, -2.0F, 2, 4, 2, new CubeDeformation(0.0F)),
                 PartPose.offset(0.0F, -3.0F, -4.0F));

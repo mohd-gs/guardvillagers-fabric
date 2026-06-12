@@ -787,6 +787,15 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         return baseSpeed * GuardConfig.getMovementSpeedMultiplier();
     }
 
+    /**
+     * Public method to re-apply difficulty speed modifier at runtime.
+     * Called by /guardvillagers difficulty command to update existing guards
+     * without requiring a server restart.
+     */
+    public void applyDifficultySpeed() {
+        this.applyDifficultyModifiers();
+    }
+
     @Override
     public EntityDimensions getDefaultDimensions(Pose pose) {
         return SIZE_BY_POSE.getOrDefault(pose, EntityDimensions.scalable(0.6F, 1.95F));
