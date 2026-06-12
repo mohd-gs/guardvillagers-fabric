@@ -254,14 +254,14 @@ public class GuardConfig {
         public String guardDifficulty = "HIGH"; // "HIGH" or "LOW"
 
         // LOW-difficulty multipliers (applied on top of all other values)
-        // Movement speed multiplier (0.5 = half speed)
-        public double lowMovementSpeedMultiplier = 0.6;
+        // Movement speed multiplier (0.85 = 85% speed, slightly slower)
+        public double lowMovementSpeedMultiplier = 0.85;
         // Attack cooldown multiplier (1.8 = attacks take 1.8x longer, so slower attacks)
         public double lowAttackCooldownMultiplier = 1.8;
-        // Ranged inaccuracy addition (added on top of base inaccuracy — higher = less accurate)
-        public double lowRangedInaccuracyAdd = 6.0;
-        // Follow range multiplier (0.5 = half the tracking range)
-        public double lowFollowRangeMultiplier = 0.6;
+        // Ranged inaccuracy addition (0.0 = same accuracy as HIGH difficulty)
+        public double lowRangedInaccuracyAdd = 0.0;
+        // Follow range multiplier (0.85 = 85% tracking range)
+        public double lowFollowRangeMultiplier = 0.85;
         // Bow draw time multiplier (1.5 = takes 1.5x longer to draw bow)
         public double lowBowDrawTimeMultiplier = 1.5;
         // Arrow velocity multiplier (0.75 = slower arrows, harder to hit moving targets)
