@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "GGG",
+    "GHG",
+    "GGG"
+  ],
+  "key": {
+    "G": "minecraft:gold_ingot",
+    "H": "minecraft:goat_horn"
+  },
+  "result": {
+    "id": "guardvillagers:rally_horn",
+    "count": 1
+  }
+}

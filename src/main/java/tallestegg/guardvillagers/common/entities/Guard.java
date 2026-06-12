@@ -93,6 +93,7 @@ import tallestegg.guardvillagers.common.entities.ai.goals.GuardSquadGoal;
 import tallestegg.guardvillagers.common.entities.ai.goals.WeaponBehavior;
 import tallestegg.guardvillagers.common.entities.ai.goals.GuardFormationGoal;
 import tallestegg.guardvillagers.common.entities.ai.goals.AntiCreeperGoal;
+import tallestegg.guardvillagers.common.entities.BannerAlliance;
 import tallestegg.guardvillagers.common.entities.ai.goals.TargetPrioritizationGoal;
 import tallestegg.guardvillagers.configuration.GuardConfig;
 import tallestegg.guardvillagers.loot_tables.GuardLootTables;
@@ -115,7 +116,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
     private final GossipContainer gossips = new GossipContainer();
     public long lastGossipTime;
     public long lastGossipDecayTime;
-    public SimpleContainer guardInventory = new SimpleContainer(6);
+    public SimpleContainer guardInventory = new SimpleContainer(7); // Slot 6 = Banner
     public int kickTicks;
     public int shieldCoolDown;
     public int kickCoolDown;
@@ -232,6 +233,15 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
     @Override
     protected void doPush(Entity entityIn) {
         if (entityIn instanceof PathfinderMob living) {
+            // Banner system: Don't auto-target guards from different banner teams
+            // unless they are at war. Neutral guards should be left alone.
+            if (living instanceof Guard otherGuard) {
+                if (!BannerAlliance.shouldAttackGuard(this, otherGuard)) {
+                    // Same team or neutral — don't attack
+                    super.doPush(entityIn);
+                    return;
+                }
+            }
             boolean attackTargets = living.getTarget() instanceof Villager || living.getTarget() instanceof IronGolem || living.getTarget() instanceof Guard;
             if (attackTargets) this.setTarget(living);
         }
@@ -1273,6 +1283,30 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         ItemStack mainHand = this.getMainHandItem();
         ItemStack offHand = this.getOffhandItem();
         return mainHand.getItem() instanceof AxeItem && !offHand.has(DataComponents.BLOCKS_ATTACKS);
+    }
+
+    // === Banner System ===
+
+    /**
+     * Get the banner item from this guard's banner slot (inventory slot 6).
+     * Returns EMPTY if no banner is equipped.
+     */
+    public ItemStack getBannerItem() {
+        return this.guardInventory.getItem(6);
+    }
+
+    /**
+     * Set the banner item in this guard's banner slot.
+     */
+    public void setBannerItem(ItemStack banner) {
+        this.guardInventory.setItem(6, banner);
+    }
+
+    /**
+     * Get this guard's banner team ID. Returns null if no banner.
+     */
+    public String getBannerTeam() {
+        return BannerAlliance.getBannerTeam(this);
     }
 
     public boolean isShieldGuard() {

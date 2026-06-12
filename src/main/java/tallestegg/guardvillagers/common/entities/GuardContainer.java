@@ -9,6 +9,7 @@ import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.equipment.Equippable;
+import net.minecraft.world.item.BannerItem;
 import net.minecraft.resources.Identifier;
 import tallestegg.guardvillagers.GuardVillagers;
 
@@ -174,6 +175,23 @@ public class GuardContainer extends AbstractContainerMenu {
             public void set(ItemStack stack) {
                 super.set(stack);
                 guard.setItemSlot(EquipmentSlot.MAINHAND, stack);
+            }
+        });
+        // Banner slot (index 6) — only accepts Banner items
+        this.addSlot(new Slot(guardInventory, 6, 77, 8) {
+            @Override
+            public boolean mayPlace(ItemStack stack) {
+                return stack.getItem() instanceof BannerItem && GuardVillagers.hotvChecker(playerInventory.player, guard);
+            }
+
+            @Override
+            public int getMaxStackSize() {
+                return 1;
+            }
+
+            @Override
+            public boolean mayPickup(Player playerIn) {
+                return GuardVillagers.hotvChecker(playerIn, guard);
             }
         });
         for (int l = 0; l < 3; ++l) {

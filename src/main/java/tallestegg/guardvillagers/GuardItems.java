@@ -10,6 +10,8 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.SpawnEggItem;
 import tallestegg.guardvillagers.common.items.WarHornItem;
 import tallestegg.guardvillagers.common.items.PatrolFlagItem;
+import tallestegg.guardvillagers.common.items.RallyHornItem;
+import tallestegg.guardvillagers.common.items.PeaceHornItem;
 
 public class GuardItems {
     public static final SpawnEggItem GUARD_SPAWN_EGG = registerSpawnEgg(
@@ -28,6 +30,16 @@ public class GuardItems {
     // Feature 1: Patrol Flag item
     public static final PatrolFlagItem PATROL_FLAG = registerPatrolFlag(
             GuardVillagers.MODID, "patrol_flag"
+    );
+
+    // Banner System: Rally Horn — teleports all same-banner guards to the player
+    public static final RallyHornItem RALLY_HORN = registerRallyHorn(
+            GuardVillagers.MODID, "rally_horn"
+    );
+
+    // Banner System: Peace Horn — ends war with enemy banner teams
+    public static final PeaceHornItem PEACE_HORN = registerPeaceHorn(
+            GuardVillagers.MODID, "peace_horn"
     );
 
     // MC 26.1.x: Item.Properties requires setId() BEFORE the Item constructor runs.
@@ -62,6 +74,28 @@ public class GuardItems {
                 .durability(100)
                 .setId(resourceKey);
         PatrolFlagItem item = new PatrolFlagItem(properties);
+        return Registry.register(BuiltInRegistries.ITEM, resourceKey, item);
+    }
+
+    private static RallyHornItem registerRallyHorn(String namespace, String path) {
+        ResourceKey<Item> resourceKey = ResourceKey.create(
+                Registries.ITEM, Identifier.fromNamespaceAndPath(namespace, path)
+        );
+        Item.Properties properties = new Item.Properties()
+                .durability(10)
+                .setId(resourceKey);
+        RallyHornItem item = new RallyHornItem(properties);
+        return Registry.register(BuiltInRegistries.ITEM, resourceKey, item);
+    }
+
+    private static PeaceHornItem registerPeaceHorn(String namespace, String path) {
+        ResourceKey<Item> resourceKey = ResourceKey.create(
+                Registries.ITEM, Identifier.fromNamespaceAndPath(namespace, path)
+        );
+        Item.Properties properties = new Item.Properties()
+                .durability(10)
+                .setId(resourceKey);
+        PeaceHornItem item = new PeaceHornItem(properties);
         return Registry.register(BuiltInRegistries.ITEM, resourceKey, item);
     }
 
