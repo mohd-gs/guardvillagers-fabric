@@ -2104,6 +2104,12 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         // and immediately re-draw on the next tick (friendlyInLineOfSight=false
         // on non-check ticks), creating an infinite draw-cancel cycle.
         private int friendlyFireCooldown = 0;
+        // BUG FIX: Track consecutive friendly fire cancellations.
+        // If a friendly mob is ALWAYS in the way, the guard would never shoot.
+        // After MAX_FRIENDLY_FIRE_CANCELS consecutive cancellations, the guard
+        // shoots anyway — it's better to risk hitting an ally than to freeze forever.
+        private int consecutiveFriendlyCancels = 0;
+        private static final int MAX_FRIENDLY_FIRE_CANCELS = 8;
 
         public GuardBowAttack(Guard mob, double speedModifier, int attackIntervalMin, float attackRadius) {
             this.guard = mob;
@@ -2140,6 +2146,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
             this.guard.stopUsingItem();
             this.guard.setAggressive(false);
             this.friendlyFireCooldown = 0;
+            this.consecutiveFriendlyCancels = 0;
         }
 
         @Override
@@ -2224,10 +2231,23 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
             }
 
             // Check for friendly in line of sight (cached, persists across ticks)
+            // BUG FIX: Added max consecutive cancellation limit. If a friendly is
+            // ALWAYS in the way, the guard would never shoot and freeze permanently.
+            // After MAX_FRIENDLY_FIRE_CANCELS cancellations, the guard shoots anyway —
+            // it's better to risk hitting an ally than to freeze forever doing nothing.
             if (this.friendlyFireCooldown <= 0 && RangedCrossbowAttackPassiveGoal.friendlyInLineOfSight(guard)) {
-                guard.stopUsingItem();
-                this.friendlyFireCooldown = 40; // 2 second cooldown before re-drawing
-                this.attackInterval = this.attackIntervalMin; // Reset attack interval
+                if (this.consecutiveFriendlyCancels >= MAX_FRIENDLY_FIRE_CANCELS) {
+                    // Too many consecutive cancellations — shoot anyway to prevent freeze
+                    this.consecutiveFriendlyCancels = 0;
+                } else {
+                    guard.stopUsingItem();
+                    this.friendlyFireCooldown = 40; // 2 second cooldown before re-drawing
+                    this.attackInterval = this.attackIntervalMin; // Reset attack interval
+                    this.consecutiveFriendlyCancels++;
+                }
+            } else if (this.friendlyFireCooldown <= 0 && !RangedCrossbowAttackPassiveGoal.friendlyInLineOfSight(guard)) {
+                // Clear the counter when there's no friendly in the way
+                this.consecutiveFriendlyCancels = 0;
             }
         }
     }
@@ -2518,6 +2538,11 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         private final T mob;
         private final double speedModifier;
         private final float attackRadiusSqr;
+        // BUG FIX: Track consecutive friendly fire position-change attempts.
+        // If a friendly is ALWAYS in the way, the crossbow guard enters FIND_NEW_POSITION
+        // state infinitely and never shoots. After MAX_POSITION_CHANGES, shoot anyway.
+        private int consecutivePositionChanges = 0;
+        private static final int MAX_POSITION_CHANGES = 6;
         protected double wantedX;
         protected double wantedY;
         protected double wantedZ;
@@ -2644,11 +2669,23 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
                         this.crossbowState = CrossbowState.READY_TO_ATTACK;
                     }
                 } else if (this.crossbowState == CrossbowState.READY_TO_ATTACK && canSee) {
-                    if (friendlyInLineOfSight(this.mob) && !this.mob.isPatrolling())
-                        this.crossbowState = CrossbowState.FIND_NEW_POSITION;
-                    else {
+                    // BUG FIX: If friendly is always in the way, the guard would enter
+                    // FIND_NEW_POSITION infinitely and never shoot. After MAX attempts,
+                    // shoot anyway to prevent permanent freeze.
+                    if (friendlyInLineOfSight(this.mob) && !this.mob.isPatrolling()) {
+                        this.consecutivePositionChanges++;
+                        if (this.consecutivePositionChanges >= MAX_POSITION_CHANGES) {
+                            // Too many repositions — shoot anyway to prevent freeze
+                            this.mob.performRangedAttack(livingentity, 1.0F);
+                            this.crossbowState = CrossbowState.UNCHARGED;
+                            this.consecutivePositionChanges = 0;
+                        } else {
+                            this.crossbowState = CrossbowState.FIND_NEW_POSITION;
+                        }
+                    } else {
                         this.mob.performRangedAttack(livingentity, 1.0F);
                         this.crossbowState = CrossbowState.UNCHARGED;
+                        this.consecutivePositionChanges = 0;
                     }
                 }
             }
@@ -2775,11 +2812,30 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         public boolean canUse() {
             ItemStack off = guard.getOffhandItem();
             boolean hasBlockItem = !off.isEmpty() && off.has(DataComponents.BLOCKS_ATTACKS);
+
+            // BUG FIX: Bow guards should NEVER raise shield while they have a target
+            // and are at ranged distance. Previously, bow guards with shields would
+            // freeze at close range — the shield goal (priority 0) would raise the
+            // shield, making isBlocking()=true, which prevented GuardBowAttack.canUse()
+            // from ever returning true. The guard would just stand there blocking forever.
+            //
+            // For bow guards, the shield should only be raised when they are NOT
+            // actively trying to shoot (i.e., no target or target is dead).
+            // Bow guards should rely on retreating and shooting instead of blocking.
+            if (guard.getMainHandItem().getItem() instanceof BowItem && guard.getTarget() != null) {
+                return false; // Bow guards never raise shield when they have a target
+            }
+
             return !CrossbowItem.isCharged(guard.getMainHandItem()) && (hasBlockItem && raiseShield() && guard.shieldCoolDown == 0);
         }
 
         @Override
         public boolean canContinueToUse() {
+            // BUG FIX: If a bow guard somehow started blocking (e.g., switched to bow
+            // mid-combat), immediately stop raising the shield so they can shoot.
+            if (guard.getMainHandItem().getItem() instanceof BowItem && guard.getTarget() != null) {
+                return false;
+            }
             return this.canUse();
         }
 
@@ -2808,12 +2864,12 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
                 boolean ranged = guard.getMainHandItem().getItem() instanceof CrossbowItem || guard.getMainHandItem().getItem() instanceof BowItem;
                 double dist = guard.distanceTo(target);
 
-                // Bow guards: only raise shield when enemies are very close (melee range).
-                // At range, the bow guard should be shooting, not blocking.
-                // Without this check, bow guards would raise shield at any distance
-                // when GuardRaiseShield config is enabled, making them unable to shoot.
-                if (ranged && dist > 5.0D) {
-                    return false; // Too far for shield — use ranged weapon instead
+                // Crossbow guards: don't raise shield while charging or ready to fire.
+                // Only raise shield when not actively using the crossbow.
+                if (guard.getMainHandItem().getItem() instanceof CrossbowItem) {
+                    if (guard.isUsingItem() || CrossbowItem.isCharged(guard.getMainHandItem())) {
+                        return false;
+                    }
                 }
 
                 return dist <= 4.0D || target instanceof Creeper || target instanceof RangedAttackMob && dist >= 5.0D && !ranged || target instanceof Ravager || GuardConfig.COMMON.GuardRaiseShield;
