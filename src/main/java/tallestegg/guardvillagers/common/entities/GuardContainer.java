@@ -177,8 +177,10 @@ public class GuardContainer extends AbstractContainerMenu {
                 guard.setItemSlot(EquipmentSlot.MAINHAND, stack);
             }
         });
-        // Banner slot (index 6) — only accepts Banner items
-        this.addSlot(new Slot(guardInventory, 6, 77, 8) {
+        // Banner slot (index 6) — only accepts Banner items.
+        // Positioned at top-right of the guard inventory area (x=98, y=8)
+        // to clearly separate it from armor and weapon slots.
+        this.addSlot(new Slot(guardInventory, 6, 98, 8) {
             @Override
             public boolean mayPlace(ItemStack stack) {
                 return stack.getItem() instanceof BannerItem && GuardVillagers.hotvChecker(playerInventory.player, guard);

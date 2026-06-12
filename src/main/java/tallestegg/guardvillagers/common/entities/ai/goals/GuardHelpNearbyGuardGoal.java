@@ -4,6 +4,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.target.TargetGoal;
 import net.minecraft.world.entity.ai.targeting.TargetingConditions;
 import tallestegg.guardvillagers.common.entities.Guard;
+import tallestegg.guardvillagers.common.entities.BannerAlliance;
 import tallestegg.guardvillagers.configuration.GuardConfig;
 
 import java.util.List;
@@ -82,6 +83,8 @@ public class GuardHelpNearbyGuardGoal extends TargetGoal {
             // Check team alliances
             if (this.guard.getTeam() != null && otherTarget.getTeam() != null
                     && this.guard.getTeam().isAlliedTo(otherTarget.getTeam())) continue;
+            // Banner alliance: Don't share targets that are banner allies
+            if (!BannerAlliance.shouldAttackEntity(this.guard, otherTarget)) continue;
 
             double dist = guard.distanceToSqr(otherTarget);
             if (dist < bestDistance) {

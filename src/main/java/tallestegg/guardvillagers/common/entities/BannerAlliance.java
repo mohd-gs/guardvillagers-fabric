@@ -14,14 +14,16 @@ import java.util.concurrent.ConcurrentHashMap;
  * Banner Alliance System — manages banner-based team relationships.
  * <p>
  * Core rules:
- * - Same banner = ALLIES (guards help each other, share targets)
+ * - Same banner = ALLIES (guards help each other, share targets, don't fight)
  * - Different banner = NEUTRAL (ignore each other, don't help)
  * - No banner = NEUTRAL (default state)
- * - If a guard from team A attacks a guard from team B → WAR between A and B
+ * - If a guard/player from team A attacks a guard/player from team B → WAR between A and B
  * - During war, guards from team A target guards from team B and vice versa
  * - Peace Horn can end wars
  * <p>
- * Banner identification: Uses the serialized pattern layers as a unique team ID.
+ * Player banner detection: Checks main hand, offhand, and helmet slot for banners.
+ * <p>
+ * Banner identification: Uses the base color + pattern layers as a unique team ID.
  * Two banners with the same colors and patterns = same team.
  * Banner items without patterns (plain banners) are still valid — their team ID
  * is based on the base color alone.
@@ -48,17 +50,23 @@ public final class BannerAlliance {
 
     /**
      * Get the banner team ID for a player.
-     * Checks both hands and the offhand for a banner item.
+     * Checks main hand, offhand, and helmet slot for a banner item.
      * Returns the banner's unique pattern string, or null if no banner found.
      */
     public static String getBannerTeam(Player player) {
-        // Check main hand first, then offhand
+        // Check main hand first
         ItemStack mainHand = player.getMainHandItem();
         String team = getBannerTeamFromStack(mainHand);
         if (team != null) return team;
 
+        // Check offhand
         ItemStack offhand = player.getOffhandItem();
         team = getBannerTeamFromStack(offhand);
+        if (team != null) return team;
+
+        // Check helmet slot — players may wear banners on their head
+        ItemStack helmet = player.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.HEAD);
+        team = getBannerTeamFromStack(helmet);
         return team;
     }
 
@@ -98,6 +106,7 @@ public final class BannerAlliance {
     /**
      * Check if two entities are allies (same banner team).
      * Returns true only if both entities have banners AND they are the same team.
+     * Works for Guard↔Guard, Guard↔Player, and Player↔Player.
      */
     public static boolean areAllies(LivingEntity a, LivingEntity b) {
         String teamA = getBannerTeam(a);
@@ -123,7 +132,7 @@ public final class BannerAlliance {
 
     /**
      * Declare war between two banner teams.
-     * Called when a guard from one team attacks a guard from another team.
+     * Called when an entity from one team attacks an entity from another team.
      */
     public static void declareWar(String teamA, String teamB) {
         if (teamA == null || teamB == null) return;
@@ -170,11 +179,11 @@ public final class BannerAlliance {
     /**
      * Check if a guard should attack another guard based on banner teams.
      * Returns true if:
-     * - They are at war (different banners + war declared), OR
-     * - They have no banner relationship (vanilla behavior — attack normal enemies)
+     * - They are at war (different banners + war declared)
      * Returns false if:
      * - Same banner team (allies), OR
-     * - Different banners but NOT at war (neutral)
+     * - Different banners but NOT at war (neutral), OR
+     * - Both have no banners (vanilla: guards don't fight each other)
      */
     public static boolean shouldAttackGuard(Guard attacker, Guard target) {
         String attackerTeam = getBannerTeam(attacker);
@@ -194,18 +203,68 @@ public final class BannerAlliance {
     }
 
     /**
+     * Check if a guard should attack a player based on banner teams.
+     * Returns true if:
+     * - They are at war (different banners + war declared)
+     * - Player has no banner and guard has no banner (vanilla: guard defends itself)
+     * Returns false if:
+     * - Same banner team (allies — even if player hits guard accidentally)
+     * - Different banners but NOT at war (neutral — don't attack neutral players)
+     * - Guard has banner but player doesn't (neutral — don't attack unbannered players)
+     */
+    public static boolean shouldAttackPlayer(Guard guard, Player player) {
+        String guardTeam = getBannerTeam(guard);
+        String playerTeam = getBannerTeam(player);
+
+        // Both have no banners → vanilla behavior (guard can attack player if angry)
+        if (guardTeam == null && playerTeam == null) return true;
+
+        // Same team → NEVER attack allies (even if they accidentally hit you)
+        if (guardTeam != null && guardTeam.equals(playerTeam)) return false;
+
+        // Guard has banner but player doesn't → neutral, don't attack
+        if (guardTeam != null && playerTeam == null) return false;
+
+        // Player has banner but guard doesn't → neutral, don't attack
+        if (guardTeam == null && playerTeam != null) return false;
+
+        // Different banners → only attack if at war
+        return isAtWar(guardTeam, playerTeam);
+    }
+
+    /**
+     * Check if a guard should attack a target entity based on banner teams.
+     * Handles both Guard and Player targets.
+     */
+    public static boolean shouldAttackEntity(Guard guard, LivingEntity target) {
+        if (target instanceof Guard targetGuard) {
+            return shouldAttackGuard(guard, targetGuard);
+        }
+        if (target instanceof Player player) {
+            return shouldAttackPlayer(guard, player);
+        }
+        // Non-guard, non-player targets: vanilla behavior (attack enemies)
+        return true;
+    }
+
+    /**
      * Called when a guard is hurt by another entity.
-     * If the attacker is a guard from a different banner team, declare war.
+     * Handles both Guard and Player attackers.
+     * If the attacker is from a different banner team, declare war.
+     * If the attacker is an ally (same banner), do NOT declare war.
      */
     public static void onGuardHurtBy(Guard hurtGuard, LivingEntity attacker) {
-        if (!(attacker instanceof Guard attackerGuard)) return;
-
         String hurtTeam = getBannerTeam(hurtGuard);
-        String attackerTeam = getBannerTeam(attackerGuard);
+        String attackerTeam = getBannerTeam(attacker);
 
-        if (hurtTeam != null && attackerTeam != null && !hurtTeam.equals(attackerTeam)) {
-            declareWar(hurtTeam, attackerTeam);
-        }
+        // If either has no banner, no banner-related war logic applies
+        if (hurtTeam == null || attackerTeam == null) return;
+
+        // Same team → allies, don't declare war (even if accidental hit)
+        if (hurtTeam.equals(attackerTeam)) return;
+
+        // Different teams → declare war!
+        declareWar(hurtTeam, attackerTeam);
     }
 
     // === Utility ===

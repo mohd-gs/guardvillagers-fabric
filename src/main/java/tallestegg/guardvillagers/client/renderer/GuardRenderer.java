@@ -26,6 +26,7 @@ import tallestegg.guardvillagers.client.GuardClientEvents;
 import tallestegg.guardvillagers.client.models.GuardArmorModel;
 import tallestegg.guardvillagers.client.models.GuardModel;
 import tallestegg.guardvillagers.client.models.GuardSteveModel;
+import tallestegg.guardvillagers.client.renderer.layers.GuardBannerLayer;
 import tallestegg.guardvillagers.client.renderer.state.GuardRenderState;
 import tallestegg.guardvillagers.common.entities.Guard;
 import tallestegg.guardvillagers.configuration.GuardConfig;
@@ -49,6 +50,8 @@ public class GuardRenderer extends HumanoidMobRenderer<Guard, GuardRenderState, 
         );
         this.addLayer(new GuardVariantLayer(this, context.getResourceManager()));
         this.addLayer(new ItemInHandLayer<>(this));
+        // Banner system: Render banner on guard's back for visual team identification
+        this.addLayer(new GuardBannerLayer(this));
         if (GuardConfig.CLIENT.GuardSteve) {
             ArmorModelSet<HumanoidModel<GuardRenderState>> armorModels =
                     ArmorModelSet.bake(GuardClientEvents.GUARD_STEVE_ARMOR, context.getModelSet(), HumanoidModel::new);
@@ -115,6 +118,9 @@ public class GuardRenderer extends HumanoidMobRenderer<Guard, GuardRenderState, 
         state.mainArm = entity.getMainArm();
 
         state.isCrouching = entity.getPose() == net.minecraft.world.entity.Pose.CROUCHING;
+
+        // Banner system: pass banner item to render state for back rendering
+        state.bannerItem = entity.getBannerItem();
     }
 
     // Fabric: Removed IClientItemExtensions.of() NeoForge call - use vanilla-only arm pose logic

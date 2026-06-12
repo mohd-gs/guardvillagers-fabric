@@ -4,27 +4,38 @@ import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.player.PlayerModel;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.model.geom.builders.CubeDeformation;
+import net.minecraft.client.model.geom.builders.CubeListBuilder;
 import net.minecraft.client.model.geom.builders.LayerDefinition;
 import net.minecraft.client.model.geom.builders.MeshDefinition;
+import net.minecraft.client.model.geom.builders.PartDefinition;
+import net.minecraft.client.model.geom.PartPose;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.item.ItemUseAnimation;
 import tallestegg.guardvillagers.client.renderer.state.GuardRenderState;
 
 public class GuardSteveModel extends HumanoidModel<GuardRenderState> {
+    public final ModelPart banner;
 
     public GuardSteveModel(ModelPart part) {
         super(part);
+        this.banner = this.body.getChild("banner");
     }
 
     public static LayerDefinition createMesh() {
         MeshDefinition meshdefinition = PlayerModel.createMesh(CubeDeformation.NONE, false);
+        PartDefinition partdefinition = meshdefinition.getRoot();
+        // Banner on back for Steve model
+        PartDefinition body = partdefinition.getChild("body");
+        body.addOrReplaceChild("banner", CubeListBuilder.create().texOffs(0, 0).addBox(-3.0F, -8.0F, 0.0F, 6, 12, 0.5F,
+                new CubeDeformation(0.0F)), PartPose.offsetAndRotation(-3.5F, 3.0F, 2.5F, 0.0F, 0.0F, 0.0F));
         return LayerDefinition.create(meshdefinition, 64, 64);
     }
 
     @Override
     public void setupAnim(GuardRenderState state) {
         super.setupAnim(state);
+        this.banner.visible = !state.bannerItem.isEmpty();
 
         if (state.kickTicks > 0) {
             float f1 = 1.0F - (float) Mth.abs(10 - 2 * state.kickTicks) / 10.0F;

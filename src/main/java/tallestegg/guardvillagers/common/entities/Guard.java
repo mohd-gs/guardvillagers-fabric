@@ -242,6 +242,16 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
                     return;
                 }
             }
+        }
+        // Banner system: Don't auto-target players with the same banner
+        if (entityIn instanceof Player player) {
+            if (!BannerAlliance.shouldAttackPlayer(this, player)) {
+                // Ally or neutral player — don't attack
+                super.doPush(entityIn);
+                return;
+            }
+        }
+        if (entityIn instanceof PathfinderMob living) {
             boolean attackTargets = living.getTarget() instanceof Villager || living.getTarget() instanceof IronGolem || living.getTarget() instanceof Guard;
             if (attackTargets) this.setTarget(living);
         }
@@ -1085,8 +1095,28 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
     @Override
     public void setTarget(LivingEntity entity) {
-        if (entity != null && entity.isAlive() && (((this.getTeam() != null && entity.getTeam() != null && this.getTeam().isAlliedTo(entity.getTeam()))) || GuardConfig.COMMON.isBlackListed(BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString()) || entity.hasEffect(MobEffects.HERO_OF_THE_VILLAGE) || this.isOwner(entity) || (entity instanceof TamableAnimal tamed && (tamed.getOwner() != null && tamed.getOwner().getUUID().equals(this.getOwnerId())))))
-            return;
+        if (entity != null && entity.isAlive()) {
+            // Vanilla team alliance check
+            if (this.getTeam() != null && entity.getTeam() != null && this.getTeam().isAlliedTo(entity.getTeam()))
+                return;
+            // Blacklisted entities
+            if (GuardConfig.COMMON.isBlackListed(BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString()))
+                return;
+            // Hero of the Village protection
+            if (entity.hasEffect(MobEffects.HERO_OF_THE_VILLAGE))
+                return;
+            // Owner protection
+            if (this.isOwner(entity))
+                return;
+            // Tamed animal owner protection
+            if (entity instanceof TamableAnimal tamed && (tamed.getOwner() != null && tamed.getOwner().getUUID().equals(this.getOwnerId())))
+                return;
+            // Banner alliance: Don't target allies (same banner team)
+            // This prevents guards from attacking players/guards with the same banner,
+            // even if the player accidentally hits them.
+            if (!BannerAlliance.shouldAttackEntity(this, entity))
+                return;
+        }
         super.setTarget(entity);
     }
 

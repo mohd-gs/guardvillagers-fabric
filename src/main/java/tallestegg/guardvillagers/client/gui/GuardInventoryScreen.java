@@ -83,6 +83,12 @@ public class GuardInventoryScreen extends AbstractContainerScreen<GuardContainer
         Component guardHealthText = Component.translatable("guardinventory.health", health);
         Component guardArmorText = Component.translatable("guardinventory.armor", armor);
         int yValueWithOrWithoutArmor = armor <= 0 ? 20 : 30;
+
+        // Banner slot label — positioned next to the banner slot (slot 6, at x=98, y=8)
+        // The label helps players understand what this slot is for
+        Component bannerLabel = Component.translatable("guardinventory.banner_slot");
+        graphics.text(font, bannerLabel, 98, -5, 4210752, false);
+
         if (!GuardConfig.CLIENT.guardInventoryNumbers || guard.getMaxHealth() > 20) {
             graphics.text(font, guardHealthText, 80, 30, -12566464, false);
         } else if (guard.getMaxHealth() <= 20) {
