@@ -129,6 +129,12 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
     private static final UniformInt PERSISTENT_ANGER_TIME = TimeUtil.rangeOfSeconds(20, 39);
     private static final AttributeModifier HORSE_SPEED_COMPENSATOR = new AttributeModifier(Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "horse_speed_compensator"), 1.5F, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL);
 
+    // Difficulty system: Speed penalty for LOW difficulty
+    // Applied as ADD_MULTIPLIED_TOTAL so 0.6 means 60% of base speed (i.e., -40%)
+    // The value is computed from config: (multiplier - 1.0) gives the additive offset for ADD_MULTIPLIED_TOTAL
+    private static final Identifier DIFFICULTY_SPEED_ID = Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "difficulty_speed_modifier");
+    private static final Identifier DIFFICULTY_FOLLOW_RANGE_ID = Identifier.fromNamespaceAndPath(GuardVillagers.MODID, "difficulty_follow_range_modifier");
+
     // Feature 1: Guard Leveling - Rank enum and data
     public enum GuardRank {
         RECRUIT(0), SOLDIER(1), VETERAN(2), CAPTAIN(3);
@@ -703,8 +709,62 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
     @Override
     public void tick() {
+        // Apply difficulty-based attribute modifiers on first tick (after attributes are ready)
+        if (this.tickCount == 1) {
+            this.applyDifficultyModifiers();
+        }
         this.maybeDecayGossip();
         super.tick();
+    }
+
+    /**
+     * Apply difficulty-based attribute modifiers for movement speed and follow range.
+     * Called once on first tick when attributes are guaranteed to be initialized.
+     * HIGH difficulty = no modifiers (full power).
+     * LOW difficulty = reduced speed and follow range via transient attribute modifiers.
+     */
+    private void applyDifficultyModifiers() {
+        double speedMultiplier = GuardConfig.getMovementSpeedMultiplier();
+        double followRangeMultiplier = GuardConfig.getFollowRangeMultiplier();
+
+        // Speed modifier: ADD_MULTIPLIED_TOTAL, so (multiplier - 1.0) gives the offset
+        // e.g., multiplier=0.6 → offset=-0.4 → speed becomes 60% of base
+        AttributeInstance speedAttr = this.getAttribute(Attributes.MOVEMENT_SPEED);
+        if (speedAttr != null) {
+            speedAttr.removeModifier(DIFFICULTY_SPEED_ID);
+            if (speedMultiplier != 1.0) {
+                speedAttr.addTransientModifier(new AttributeModifier(
+                        DIFFICULTY_SPEED_ID,
+                        speedMultiplier - 1.0,
+                        AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL
+                ));
+            }
+        }
+
+        // Follow range modifier: ADD_VALUE, scale the base follow range
+        AttributeInstance rangeAttr = this.getAttribute(Attributes.FOLLOW_RANGE);
+        if (rangeAttr != null) {
+            rangeAttr.removeModifier(DIFFICULTY_FOLLOW_RANGE_ID);
+            if (followRangeMultiplier != 1.0) {
+                // ADD_VALUE: reduce by (1.0 - multiplier) * base value
+                double baseRange = GuardConfig.STARTUP.followRangeModifier;
+                double reduction = (1.0 - followRangeMultiplier) * baseRange;
+                rangeAttr.addTransientModifier(new AttributeModifier(
+                        DIFFICULTY_FOLLOW_RANGE_ID,
+                        -reduction,
+                        AttributeModifier.Operation.ADD_VALUE
+                ));
+            }
+        }
+    }
+
+    /**
+     * Get a difficulty-adjusted navigation speed multiplier.
+     * Use this when passing speed to goal navigation.moveTo() calls.
+     * HIGH difficulty returns the raw speed; LOW difficulty scales it down.
+     */
+    public static double getDifficultySpeed(double baseSpeed) {
+        return baseSpeed * GuardConfig.getMovementSpeedMultiplier();
     }
 
     @Override
@@ -825,7 +885,7 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         this.goalSelector.addGoal(2, new PickupBetterEquipmentGoal(this));
         this.goalSelector.addGoal(3, new RangedCrossbowAttackPassiveGoal<>(this, 1.0D, (float) GuardConfig.COMMON.guardCrossbowAttackRadius));
         this.goalSelector.addGoal(3, new PassiveMobSpearUseGoal<>(this, 1.0D, 0.8D, 10.0F, 2.0F));
-        this.goalSelector.addGoal(3, new GuardBowAttack(this, 1.0D, 20, 15.0F));
+        this.goalSelector.addGoal(3, new GuardBowAttack(this, 1.0D, (int) Math.round(20 * GuardConfig.getAttackCooldownMultiplier()), 15.0F));
         this.goalSelector.addGoal(3, new GuardMeleeGoal(this, 1.0D, true));
         // Flanking is now integrated into GuardMeleeGoal.tick() — a separate
         // GuardFlankingGoal at the same priority would always lose to GuardMeleeGoal
@@ -894,7 +954,9 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
     @Override
     public void performRangedAttack(LivingEntity target, float distanceFactor) {
         this.shieldCoolDown = 8;
-        if (this.getMainHandItem().getItem() instanceof CrossbowItem) this.performCrossbowAttack(this, 1.6F);
+        // Difficulty: arrow velocity is reduced on LOW difficulty
+        float arrowVelocity = (float) (1.6F * GuardConfig.getArrowVelocityMultiplier());
+        if (this.getMainHandItem().getItem() instanceof CrossbowItem) this.performCrossbowAttack(this, arrowVelocity);
         if (this.getMainHandItem().getItem() instanceof BowItem) {
             ItemStack hand = this.getMainHandItem();
             ItemStack itemstack = this.getProjectile(hand);
@@ -906,9 +968,11 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
             // FEATURE: Ranged accuracy improves with guard rank.
             // Base inaccuracy is 8.0F (same as vanilla skeleton). Each rank reduces it by 2.0F.
             // Recruit: 8.0F, Soldier: 6.0F, Veteran: 4.0F, Captain: 2.0F (very accurate).
+            // Difficulty: LOW difficulty adds extra inaccuracy.
             float inaccuracy = (float) Math.max(1.0F, GuardConfig.COMMON.rangedAccuracyBase
-                    - this.getGuardRank().level * GuardConfig.COMMON.rangedAccuracyPerRank);
-            abstractarrowentity.shoot(d0, d1 + d3 * (double) 0.2F, d2, 1.6F, inaccuracy);
+                    - this.getGuardRank().level * GuardConfig.COMMON.rangedAccuracyPerRank
+                    + GuardConfig.getRangedInaccuracyAdd());
+            abstractarrowentity.shoot(d0, d1 + d3 * (double) 0.2F, d2, arrowVelocity, inaccuracy);
             this.playSound(SoundEvents.ARROW_SHOOT, 1.0F, 1.0F / (this.getRandom().nextFloat() * 0.4F + 0.8F));
             // 26.1.x: addFreshEntity() is only on ServerLevel, not Level
             if (this.level() instanceof ServerLevel serverLevel) {
@@ -923,7 +987,9 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         InteractionHand interactionhand = ProjectileUtil.getWeaponHoldingHand(p_32337_, Items.CROSSBOW);
         ItemStack itemstack = p_32337_.getItemInHand(interactionhand);
         if (itemstack.getItem() instanceof CrossbowItem crossbowitem) {
-            crossbowitem.performShooting(p_32337_.level(), p_32337_, interactionhand, itemstack, p_32338_, 0.0F, null);
+            // Difficulty: LOW difficulty adds inaccuracy to crossbow shots (vanilla crossbow has 0.0F)
+            float crossbowInaccuracy = (float) GuardConfig.getRangedInaccuracyAdd();
+            crossbowitem.performShooting(p_32337_.level(), p_32337_, interactionhand, itemstack, p_32338_, crossbowInaccuracy, null);
         }
         this.onCrossbowAttackPerformed();
     }
@@ -2067,7 +2133,9 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
 
                 if (guard.isUsingItem()) {
                     int useTicks = guard.getTicksUsingItem();
-                    if (useTicks >= 20) {
+                    // Difficulty: LOW difficulty requires more ticks to fully draw the bow
+                    int drawTime = (int) Math.round(20 * GuardConfig.getBowDrawTimeMultiplier());
+                    if (useTicks >= drawTime) {
                         guard.stopUsingItem();
                         guard.performRangedAttack(target, BowItem.getPowerForTime(useTicks));
                         this.attackInterval = this.attackIntervalMin;
@@ -2488,10 +2556,13 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
                     }
                     int i = this.mob.getTicksUsingItem();
                     ItemStack itemstack = this.mob.getUseItem();
-                    if (i >= CrossbowItem.getChargeDuration(itemstack, this.mob) || CrossbowItem.isCharged(itemstack)) {
+                    // Difficulty: LOW difficulty requires more ticks before the crossbow is considered "charged"
+                    int chargeThreshold = (int) Math.round(CrossbowItem.getChargeDuration(itemstack, this.mob) * GuardConfig.getCrossbowChargeMultiplier());
+                    if (i >= chargeThreshold || CrossbowItem.isCharged(itemstack)) {
                         this.mob.releaseUsingItem();
                         this.crossbowState = CrossbowState.CHARGED;
-                        this.attackDelay = 10;
+                        // Difficulty: LOW difficulty has longer delay between charge and fire
+                        this.attackDelay = (int) Math.round(10 * GuardConfig.getAttackCooldownMultiplier());
                         this.mob.setChargingCrossbow(false);
                     }
                 } else if (this.crossbowState == CrossbowState.CHARGED) {

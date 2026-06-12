@@ -97,10 +97,11 @@ public final class WeaponBehavior {
     /**
      * Get the attack cooldown interval for a weapon type.
      * Lower values = faster attacks.
+     * Difficulty modifier: LOW difficulty increases cooldown (slower attacks).
      */
     public static int getAttackCooldown(WeaponType type) {
-        if (!GuardConfig.COMMON.weaponSpecificBehavior) return 20; // Default
-        return switch (type) {
+        if (!GuardConfig.COMMON.weaponSpecificBehavior) return applyDifficultyCooldown(20); // Default
+        int baseCooldown = switch (type) {
             case SWORD -> 15;    // Fast - 0.75s
             case AXE -> 30;      // Slow - 1.5s
             case MACE -> 25;     // Medium-slow - 1.25s
@@ -110,6 +111,15 @@ public final class WeaponBehavior {
             case CROSSBOW -> 25; // Handled by crossbow goal
             default -> 20;
         };
+        return applyDifficultyCooldown(baseCooldown);
+    }
+
+    /**
+     * Apply difficulty cooldown multiplier. LOW difficulty = longer cooldowns = slower attacks.
+     */
+    private static int applyDifficultyCooldown(int baseCooldown) {
+        double multiplier = GuardConfig.getAttackCooldownMultiplier();
+        return Math.max(5, (int) Math.round(baseCooldown * multiplier));
     }
 
     // === Optimal Combat Distance ===
@@ -157,11 +167,12 @@ public final class WeaponBehavior {
     /**
      * Get the movement speed modifier during combat for this weapon type.
      * Heavier weapons slow the guard down; lighter weapons allow faster movement.
+     * Difficulty: LOW difficulty further reduces combat speed.
      */
     public static double getCombatSpeedModifier(Guard guard) {
-        if (!GuardConfig.COMMON.weaponSpecificBehavior) return 1.0D;
+        if (!GuardConfig.COMMON.weaponSpecificBehavior) return GuardConfig.getMovementSpeedMultiplier();
         WeaponType type = getWeaponType(guard);
-        return switch (type) {
+        double baseMod = switch (type) {
             case SWORD -> 1.2D;     // Fast footwork
             case AXE -> 0.85D;      // Slow, deliberate
             case MACE -> 0.9D;      // Slightly slow
@@ -171,6 +182,7 @@ public final class WeaponBehavior {
             case CROSSBOW -> 0.9D;  // Slightly slow when aiming
             default -> 1.0D;
         };
+        return baseMod * GuardConfig.getMovementSpeedMultiplier();
     }
 
     // === Strategic Behaviors ===

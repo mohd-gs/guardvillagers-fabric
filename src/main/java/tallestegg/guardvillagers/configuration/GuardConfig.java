@@ -14,6 +14,21 @@ public class GuardConfig {
     public static final ClientConfig CLIENT = new ClientConfig();
     public static final StartUpConfig STARTUP = new StartUpConfig();
 
+    /**
+     * Guard difficulty level — controls how strong guards are in combat.
+     * <ul>
+     *   <li><b>HIGH</b> — Full combat power (current default). Guards are elite fighters
+     *       that can overpower a skilled player in direct combat.</li>
+     *   <li><b>LOW</b> — Reduced combat power. Slower movement, slower attacks,
+     *       worse accuracy, shorter tracking range. Guards are still useful but
+     *       beatable by a prepared player.</li>
+     * </ul>
+     */
+    public enum GuardDifficulty {
+        HIGH,
+        LOW
+    }
+
     private static final Path CONFIG_PATH = FabricLoader.getInstance().getConfigDir().resolve("guardvillagers.json");
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
@@ -234,6 +249,26 @@ public class GuardConfig {
         // Target Prioritization (new)
         public boolean smartTargetPrioritization = true;
 
+        // === Difficulty System ===
+        // Controls overall guard combat power. HIGH = current full power, LOW = weaker/easier.
+        public String guardDifficulty = "HIGH"; // "HIGH" or "LOW"
+
+        // LOW-difficulty multipliers (applied on top of all other values)
+        // Movement speed multiplier (0.5 = half speed)
+        public double lowMovementSpeedMultiplier = 0.6;
+        // Attack cooldown multiplier (1.8 = attacks take 1.8x longer, so slower attacks)
+        public double lowAttackCooldownMultiplier = 1.8;
+        // Ranged inaccuracy addition (added on top of base inaccuracy — higher = less accurate)
+        public double lowRangedInaccuracyAdd = 6.0;
+        // Follow range multiplier (0.5 = half the tracking range)
+        public double lowFollowRangeMultiplier = 0.6;
+        // Bow draw time multiplier (1.5 = takes 1.5x longer to draw bow)
+        public double lowBowDrawTimeMultiplier = 1.5;
+        // Arrow velocity multiplier (0.75 = slower arrows, harder to hit moving targets)
+        public double lowArrowVelocityMultiplier = 0.75;
+        // Crossbow charge time multiplier (1.5 = takes 1.5x longer to charge)
+        public double lowCrossbowChargeMultiplier = 1.5;
+
         public void fromJson(JsonObject obj) {
             RaidAnimals = getBoolSafe(obj, "RaidAnimals", RaidAnimals);
             WitchesVillager = getBoolSafe(obj, "WitchesVillager", WitchesVillager);
@@ -327,6 +362,15 @@ public class GuardConfig {
             formationRange = getDoubleSafe(obj, "formationRange", formationRange);
             formationSpacing = getDoubleSafe(obj, "formationSpacing", formationSpacing);
             smartTargetPrioritization = getBoolSafe(obj, "smartTargetPrioritization", smartTargetPrioritization);
+            // Difficulty system
+            guardDifficulty = getStringSafe(obj, "guardDifficulty", guardDifficulty);
+            lowMovementSpeedMultiplier = getDoubleSafe(obj, "lowMovementSpeedMultiplier", lowMovementSpeedMultiplier);
+            lowAttackCooldownMultiplier = getDoubleSafe(obj, "lowAttackCooldownMultiplier", lowAttackCooldownMultiplier);
+            lowRangedInaccuracyAdd = getDoubleSafe(obj, "lowRangedInaccuracyAdd", lowRangedInaccuracyAdd);
+            lowFollowRangeMultiplier = getDoubleSafe(obj, "lowFollowRangeMultiplier", lowFollowRangeMultiplier);
+            lowBowDrawTimeMultiplier = getDoubleSafe(obj, "lowBowDrawTimeMultiplier", lowBowDrawTimeMultiplier);
+            lowArrowVelocityMultiplier = getDoubleSafe(obj, "lowArrowVelocityMultiplier", lowArrowVelocityMultiplier);
+            lowCrossbowChargeMultiplier = getDoubleSafe(obj, "lowCrossbowChargeMultiplier", lowCrossbowChargeMultiplier);
         }
 
         public JsonObject toJson() {
@@ -423,6 +467,15 @@ public class GuardConfig {
             obj.addProperty("formationRange", formationRange);
             obj.addProperty("formationSpacing", formationSpacing);
             obj.addProperty("smartTargetPrioritization", smartTargetPrioritization);
+            // Difficulty system
+            obj.addProperty("guardDifficulty", guardDifficulty);
+            obj.addProperty("lowMovementSpeedMultiplier", lowMovementSpeedMultiplier);
+            obj.addProperty("lowAttackCooldownMultiplier", lowAttackCooldownMultiplier);
+            obj.addProperty("lowRangedInaccuracyAdd", lowRangedInaccuracyAdd);
+            obj.addProperty("lowFollowRangeMultiplier", lowFollowRangeMultiplier);
+            obj.addProperty("lowBowDrawTimeMultiplier", lowBowDrawTimeMultiplier);
+            obj.addProperty("lowArrowVelocityMultiplier", lowArrowVelocityMultiplier);
+            obj.addProperty("lowCrossbowChargeMultiplier", lowCrossbowChargeMultiplier);
             return obj;
         }
     }
@@ -495,6 +548,63 @@ public class GuardConfig {
         if (!obj.has(key)) return defaultValue;
         try { return obj.getAsJsonPrimitive(key).getAsDouble(); }
         catch (Exception e) { return defaultValue; }
+    }
+
+    private static String getStringSafe(JsonObject obj, String key, String defaultValue) {
+        if (!obj.has(key)) return defaultValue;
+        try { return obj.getAsJsonPrimitive(key).getAsString(); }
+        catch (Exception e) { return defaultValue; }
+    }
+
+    // === Difficulty convenience methods ===
+
+    /** Returns the current difficulty level. Defaults to HIGH if config is invalid. */
+    public static GuardDifficulty getDifficulty() {
+        try {
+            return GuardDifficulty.valueOf(COMMON.guardDifficulty.toUpperCase());
+        } catch (Exception e) {
+            return GuardDifficulty.HIGH;
+        }
+    }
+
+    /** Returns true if the current difficulty is LOW. */
+    public static boolean isLowDifficulty() {
+        return getDifficulty() == GuardDifficulty.LOW;
+    }
+
+    /** Movement speed multiplier based on difficulty. HIGH=1.0, LOW=configured. */
+    public static double getMovementSpeedMultiplier() {
+        return isLowDifficulty() ? COMMON.lowMovementSpeedMultiplier : 1.0;
+    }
+
+    /** Attack cooldown multiplier based on difficulty. HIGH=1.0, LOW=configured (higher = slower). */
+    public static double getAttackCooldownMultiplier() {
+        return isLowDifficulty() ? COMMON.lowAttackCooldownMultiplier : 1.0;
+    }
+
+    /** Extra inaccuracy added to ranged attacks. HIGH=0.0, LOW=configured. */
+    public static double getRangedInaccuracyAdd() {
+        return isLowDifficulty() ? COMMON.lowRangedInaccuracyAdd : 0.0;
+    }
+
+    /** Follow range multiplier. HIGH=1.0, LOW=configured. */
+    public static double getFollowRangeMultiplier() {
+        return isLowDifficulty() ? COMMON.lowFollowRangeMultiplier : 1.0;
+    }
+
+    /** Bow draw time multiplier. HIGH=1.0, LOW=configured (higher = longer draw). */
+    public static double getBowDrawTimeMultiplier() {
+        return isLowDifficulty() ? COMMON.lowBowDrawTimeMultiplier : 1.0;
+    }
+
+    /** Arrow velocity multiplier. HIGH=1.0, LOW=configured. */
+    public static double getArrowVelocityMultiplier() {
+        return isLowDifficulty() ? COMMON.lowArrowVelocityMultiplier : 1.0;
+    }
+
+    /** Crossbow charge time multiplier. HIGH=1.0, LOW=configured. */
+    public static double getCrossbowChargeMultiplier() {
+        return isLowDifficulty() ? COMMON.lowCrossbowChargeMultiplier : 1.0;
     }
 
     private static JsonArray listToJson(List<String> list) {
