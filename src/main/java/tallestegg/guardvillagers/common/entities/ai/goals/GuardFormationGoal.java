@@ -71,7 +71,11 @@ public class GuardFormationGoal extends Goal {
         // PEACETIME ONLY: Only form formations when NOT in combat.
         // Combat formation behavior (holding position, shield wall while fighting)
         // is integrated into GuardMeleeGoal.tick().
-        if (guard.getTarget() != null && guard.isAggressive()) return false;
+        // FIX: Check only getTarget(), NOT isAggressive(). Previously, checking
+        // isAggressive() created a deadlock: formation holds MOVE+LOOK flags →
+        // combat goals can't start → isAggressive() never becomes true →
+        // formation never breaks → guard stands still until death.
+        if (guard.getTarget() != null) return false;
 
         // PERFORMANCE: Only scan every 100 ticks (5 seconds)
         if (this.scanCooldown > 0) {
@@ -105,8 +109,11 @@ public class GuardFormationGoal extends Goal {
         if (!GuardConfig.COMMON.GuardFormation) return false;
         if (guard.isFollowing()) return false;
         if (guard.isPassenger()) return false;
-        // Break formation if entering active combat
-        if (guard.getTarget() != null && guard.isAggressive()) return false;
+        // FIX: Break formation as soon as guard acquires a target.
+        // Previously checked isAggressive() too, which caused a deadlock:
+        // formation holds MOVE+LOOK → combat goals can't start → isAggressive()
+        // never set → formation never breaks → guard dies in formation.
+        if (guard.getTarget() != null) return false;
 
         // Keep formation during peacetime (defensive formation)
         return this.formationTarget != null;
