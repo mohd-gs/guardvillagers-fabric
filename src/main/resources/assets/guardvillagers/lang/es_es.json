@@ -13,5 +13,6 @@
   "guardvillagers.advancements.adventure.recruit_guard.title": "Te Quieren como Nuevo Recluta",
   "stat.guardvillagers.guards_made": "Guardias crearon",
   "subtitles.entity.guard.yes": "Guardia acepta",
-  "subtitles.entity.guard.no": "Guardia rechaza"
+  "subtitles.entity.guard.no": "Guardia rechaza",
+  "guardinventory.banner_slot": "Estandarte"
 }

@@ -178,8 +178,7 @@ public class GuardContainer extends AbstractContainerMenu {
             }
         });
         // Banner slot (index 6) — only accepts Banner items.
-        // Positioned below the mainhand slot at (77, 8) so it's clearly visible
-        // and separated from the armor/weapon slots in a logical position.
+        // Positioned at (77, 8) — top-right area, above the mainhand slot.
         this.addSlot(new Slot(guardInventory, 6, 77, 8) {
             @Override
             public boolean mayPlace(ItemStack stack) {
@@ -194,6 +193,23 @@ public class GuardContainer extends AbstractContainerMenu {
             @Override
             public boolean mayPickup(Player playerIn) {
                 return GuardVillagers.hotvChecker(playerIn, guard);
+            }
+
+            @Override
+            public void set(ItemStack stack) {
+                super.set(stack);
+                // No guard.setItemSlot() call needed here — the banner slot (6)
+                // has no EquipmentSlot mapping. getBannerItem() reads directly
+                // from guardInventory.getItem(6), which is already updated by super.set().
+                // The render state (GuardRenderState.bannerItem) is refreshed each frame
+                // in GuardRenderer.extractRenderState() → entity.getBannerItem().
+            }
+
+            @Override
+            public Identifier getNoItemIcon() {
+                // Return null — we draw a custom banner placeholder icon in the screen class
+                // because there is no vanilla EMPTY_ARMOR_SLOT_BANNER sprite.
+                return null;
             }
         });
         for (int l = 0; l < 3; ++l) {
@@ -223,34 +239,62 @@ public class GuardContainer extends AbstractContainerMenu {
         if (slot != null && slot.hasItem()) {
             ItemStack itemstack1 = slot.getItem();
             itemstack = itemstack1.copy();
-            int i = this.guardInventory.getContainerSize();
+            int i = this.guardInventory.getContainerSize(); // 7 slots (0-6)
             if (index < i) {
+                // Moving FROM guard inventory TO player inventory
                 if (!this.moveItemStackTo(itemstack1, i, this.slots.size(), true)) {
                     return ItemStack.EMPTY;
                 }
-            } else if (this.getSlot(1).mayPlace(itemstack1) && !this.getSlot(1).hasItem()) {
-                if (!this.moveItemStackTo(itemstack1, 1, 2, false)) {
-                    return ItemStack.EMPTY;
+            } else {
+                // Moving FROM player inventory TO guard inventory
+                // Try to place the item in the correct guard slot
+                boolean placed = false;
+
+                // Check banner slot first if the item is a banner
+                if (itemstack1.getItem() instanceof BannerItem) {
+                    Slot bannerSlot = this.getSlot(6);
+                    if (bannerSlot.mayPlace(itemstack1) && !bannerSlot.hasItem()) {
+                        if (!this.moveItemStackTo(itemstack1, 6, 7, false)) {
+                            return ItemStack.EMPTY;
+                        }
+                        placed = true;
+                    }
                 }
-            } else if (this.getSlot(0).mayPlace(itemstack1)) {
-                if (!this.moveItemStackTo(itemstack1, 0, 1, false)) {
-                    return ItemStack.EMPTY;
-                }
-            } else if (i <= 2 || !this.moveItemStackTo(itemstack1, 2, i, false)) {
-                int j = i + 27;
-                int k = j + 9;
-                if (index >= j && index < k) {
-                    if (!this.moveItemStackTo(itemstack1, i, j, false)) {
+
+                // Check chest slot
+                if (!placed && this.getSlot(1).mayPlace(itemstack1) && !this.getSlot(1).hasItem()) {
+                    if (!this.moveItemStackTo(itemstack1, 1, 2, false)) {
                         return ItemStack.EMPTY;
                     }
-                } else if (index >= i && index < j) {
-                    if (!this.moveItemStackTo(itemstack1, j, k, false)) {
+                    placed = true;
+                }
+
+                // Check head slot
+                if (!placed && this.getSlot(0).mayPlace(itemstack1)) {
+                    if (!this.moveItemStackTo(itemstack1, 0, 1, false)) {
                         return ItemStack.EMPTY;
                     }
-                } else if (!this.moveItemStackTo(itemstack1, i, j, false)) {
+                    placed = true;
+                }
+
+                // Try remaining guard slots (legs, feet, offhand, mainhand)
+                if (!placed && !this.moveItemStackTo(itemstack1, 2, i, false)) {
+                    // Fallback: move within player inventory
+                    int j = i + 27;
+                    int k = j + 9;
+                    if (index >= j && index < k) {
+                        if (!this.moveItemStackTo(itemstack1, i, j, false)) {
+                            return ItemStack.EMPTY;
+                        }
+                    } else if (index >= i && index < j) {
+                        if (!this.moveItemStackTo(itemstack1, j, k, false)) {
+                            return ItemStack.EMPTY;
+                        }
+                    } else if (!this.moveItemStackTo(itemstack1, i, j, false)) {
+                        return ItemStack.EMPTY;
+                    }
                     return ItemStack.EMPTY;
                 }
-                return ItemStack.EMPTY;
             }
 
             if (itemstack1.isEmpty()) {

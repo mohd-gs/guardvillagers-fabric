@@ -666,6 +666,14 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
                     }
                 }
 
+                // Also transfer the banner item (slot 6) — it has no EquipmentSlot mapping
+                // so the loop above misses it. Drop the banner at the guard's location instead
+                // since zombie villagers have no banner slot.
+                ItemStack bannerStack = this.getBannerItem();
+                if (!bannerStack.isEmpty() && this.level() instanceof ServerLevel sl) {
+                    this.spawnAtLocation(sl, bannerStack.copy());
+                }
+
                 if (!this.isSilent()) {
                     level().levelEvent(null, 1026, this.blockPosition(), 0);
                 }
@@ -836,24 +844,33 @@ public class Guard extends PathfinderMob implements CrossbowAttackMob, RangedAtt
         ItemStack itemstack = this.getItemInHand(hand);
         if (!itemstack.isEmpty() && itemstack.has(DataComponents.BLOCKS_ATTACKS)) {
             AttributeInstance modifiableattributeinstance = this.getAttribute(Attributes.MOVEMENT_SPEED);
-            assert modifiableattributeinstance != null;
-            modifiableattributeinstance.removeModifier(USE_ITEM_SPEED_PENALTY);
-            modifiableattributeinstance.addTransientModifier(USE_ITEM_SPEED_PENALTY);
+            if (modifiableattributeinstance != null) {
+                modifiableattributeinstance.removeModifier(USE_ITEM_SPEED_PENALTY);
+                modifiableattributeinstance.addTransientModifier(USE_ITEM_SPEED_PENALTY);
+            }
         }
     }
 
     @Override
     public boolean startRiding(Entity vehicle, boolean force, boolean sendGameEvent) {
-        if (vehicle instanceof LivingEntity living)
-            living.getAttribute(Attributes.MOVEMENT_SPEED).addOrUpdateTransientModifier(HORSE_SPEED_COMPENSATOR);
+        if (vehicle instanceof LivingEntity living) {
+            AttributeInstance speedAttr = living.getAttribute(Attributes.MOVEMENT_SPEED);
+            if (speedAttr != null) {
+                speedAttr.addOrUpdateTransientModifier(HORSE_SPEED_COMPENSATOR);
+            }
+        }
         return super.startRiding(vehicle, force, sendGameEvent);
     }
 
     @Override
     public void stopRiding() {
         Entity entity = this.getVehicle();
-        if (entity instanceof LivingEntity living)
-            living.getAttribute(Attributes.MOVEMENT_SPEED).removeModifier(HORSE_SPEED_COMPENSATOR);
+        if (entity instanceof LivingEntity living) {
+            AttributeInstance speedAttr = living.getAttribute(Attributes.MOVEMENT_SPEED);
+            if (speedAttr != null) {
+                speedAttr.removeModifier(HORSE_SPEED_COMPENSATOR);
+            }
+        }
         super.stopRiding();
     }
 

@@ -55,5 +55,6 @@
   "subtitles.entity.guard.yes": "Guarda concorda",
   "subtitles.entity.guard.no": "Guarda discorda",
   "guardvillagers.configuration.Chance for guards to lose durability": "Chance de guardas perderem durabilidade",
-  "guardvillagers.configuration.Profession Whitelist for guard conversion": "Lista branca de profissões para conversão em guardas"
+  "guardvillagers.configuration.Profession Whitelist for guard conversion": "Lista branca de profissões para conversão em guardas",
+  "guardinventory.banner_slot": "Estandarte"
 }

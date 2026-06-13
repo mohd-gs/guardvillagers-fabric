@@ -1,4 +1,3 @@
-
 {
   "entity.guardvillagers.guard": "警卫",
   "item.guardvillagers.guard_spawn_egg": "警卫刷怪蛋",
@@ -56,5 +55,6 @@
   "subtitles.entity.guard.yes": "警卫赞同",
   "subtitles.entity.guard.no": "警卫反对",
   "guardvillagers.configuration.Chance for guards to lose durability": "Chance for guards to lose durability",
-  "guardvillagers.configuration.Profession Whitelist for guard conversion": "Profession Whitelist for guard conversion"
+  "guardvillagers.configuration.Profession Whitelist for guard conversion": "Profession Whitelist for guard conversion",
+  "guardinventory.banner_slot": "旗帜"
 }

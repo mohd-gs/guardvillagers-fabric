@@ -10,5 +10,6 @@
   "subtitles.entity.guard.hurt": "Вартового поранено",
   "subtitles.entity.guard.death": "Вартовий гине",
   "guardvillagers.advancements.adventure.recruit_guard.description": "Дайте меч безробітному селянину, щоб він допоміг захистити село",
-  "guardvillagers.advancements.adventure.recruit_guard.title": "Ти нам потрібен, як новобранець!"
+  "guardvillagers.advancements.adventure.recruit_guard.title": "Ти нам потрібен, як новобранець!",
+  "guardinventory.banner_slot": "Прапор"
 }

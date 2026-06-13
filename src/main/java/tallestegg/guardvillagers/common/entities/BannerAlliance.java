@@ -211,6 +211,8 @@ public final class BannerAlliance {
      * - Same banner team (allies — even if player hits guard accidentally)
      * - Different banners but NOT at war (neutral — don't attack neutral players)
      * - Guard has banner but player doesn't (neutral — don't attack unbannered players)
+     *     UNLESS the guard is already angry at the player (HurtByTargetGoal),
+     *     in which case vanilla self-defense behavior should take priority.
      */
     public static boolean shouldAttackPlayer(Guard guard, Player player) {
         String guardTeam = getBannerTeam(guard);
@@ -222,11 +224,17 @@ public final class BannerAlliance {
         // Same team → NEVER attack allies (even if they accidentally hit you)
         if (guardTeam != null && guardTeam.equals(playerTeam)) return false;
 
-        // Guard has banner but player doesn't → neutral, don't attack
-        if (guardTeam != null && playerTeam == null) return false;
-
-        // Player has banner but guard doesn't → neutral, don't attack
+        // Guard has no banner but player has one → neutral, don't attack
         if (guardTeam == null && playerTeam != null) return false;
+
+        // Guard has banner but player doesn't → check if guard is already angry at this player
+        // If the guard has been hurt by this player (HurtByTargetGoal active), allow self-defense
+        // This prevents bannered guards from being passive punching bags for unbannered players
+        if (guardTeam != null && playerTeam == null) {
+            LivingEntity target = guard.getTarget();
+            if (target == player) return true; // Self-defense: guard is already targeting this player
+            return false;
+        }
 
         // Different banners → only attack if at war
         return isAtWar(guardTeam, playerTeam);

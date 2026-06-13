@@ -65,5 +65,6 @@
   "guardvillagers.configuration.Profession Whitelist for guard weaponry repair ai": "Liste blanche des professions pour l’IA de réparation d’armes des gardes",
   "guardvillagers.configuration.How many times a smith villager can heal a golem in one day": "Nombre de soins qu’un forgeron peut apporter à un golem par jour",
   "guardvillagers.configuration.Profession Whitelist for healing ai for clerics": "Liste blanche des professions pour l’IA de soin des prêtres",
-  "guardvillagers.configuration.Profession Whitelist for golem repair ai": "Liste blanche des professions pour l’IA de réparation des golems"
+  "guardvillagers.configuration.Profession Whitelist for golem repair ai": "Liste blanche des professions pour l’IA de réparation des golems",
+  "guardinventory.banner_slot": "Bannière"
 }
