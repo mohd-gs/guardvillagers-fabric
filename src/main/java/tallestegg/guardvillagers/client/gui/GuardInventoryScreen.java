@@ -14,6 +14,8 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.inventory.InventoryMenu;
+import net.minecraft.world.item.ItemStack;
 import tallestegg.guardvillagers.GuardVillagers;
 import tallestegg.guardvillagers.common.entities.Guard;
 import tallestegg.guardvillagers.common.entities.GuardContainer;
@@ -84,10 +86,78 @@ public class GuardInventoryScreen extends AbstractContainerScreen<GuardContainer
         Component guardArmorText = Component.translatable("guardinventory.armor", armor);
         int yValueWithOrWithoutArmor = armor <= 0 ? 20 : 30;
 
-        // Banner slot label — positioned next to the banner slot (slot 6, at x=98, y=8)
-        // The label helps players understand what this slot is for
+        // === Banner Slot Visual Enhancement ===
+        // Draw a clearly visible box around the banner slot area and label it
+        // Banner slot is at container position (77, 8), which is at screen position
+        // (leftPos + 77, topPos + 8). We draw a highlighted box + label text.
+        int bannerSlotX = 77;
+        int bannerSlotY = 8;
+
+        // Draw a semi-transparent colored background behind the banner slot to make it stand out
+        // Using a warm golden-brown tint (RGBA: 160, 120, 40, 60) to differentiate from other slots
+        graphics.fill(
+                this.leftPos + bannerSlotX - 1,
+                this.topPos + bannerSlotY - 1,
+                this.leftPos + bannerSlotX + 17,
+                this.topPos + bannerSlotY + 17,
+                0x403C2814 // semi-transparent golden-brown background
+        );
+
+        // Draw a clear border around the banner slot (golden-brown, fully opaque)
+        // Top line
+        graphics.fill(
+                this.leftPos + bannerSlotX - 1, this.topPos + bannerSlotY - 1,
+                this.leftPos + bannerSlotX + 17, this.topPos + bannerSlotY,
+                0xFF8B6914 // golden-brown border
+        );
+        // Bottom line
+        graphics.fill(
+                this.leftPos + bannerSlotX - 1, this.topPos + bannerSlotY + 16,
+                this.leftPos + bannerSlotX + 17, this.topPos + bannerSlotY + 17,
+                0xFF8B6914
+        );
+        // Left line
+        graphics.fill(
+                this.leftPos + bannerSlotX - 1, this.topPos + bannerSlotY - 1,
+                this.leftPos + bannerSlotX, this.topPos + bannerSlotY + 17,
+                0xFF8B6914
+        );
+        // Right line
+        graphics.fill(
+                this.leftPos + bannerSlotX + 16, this.topPos + bannerSlotY - 1,
+                this.leftPos + bannerSlotX + 17, this.topPos + bannerSlotY + 17,
+                0xFF8B6914
+        );
+
+        // Draw "Banner" label above the slot
         Component bannerLabel = Component.translatable("guardinventory.banner_slot");
-        graphics.text(font, bannerLabel, 98, -5, 4210752, false);
+        int bannerLabelWidth = this.font.width(bannerLabel);
+        int bannerLabelX = this.leftPos + bannerSlotX + 8 - bannerLabelWidth / 2;
+        int bannerLabelY = this.topPos + bannerSlotY - 11;
+
+        // Draw label background for readability
+        graphics.fill(
+                bannerLabelX - 2, bannerLabelY - 1,
+                bannerLabelX + bannerLabelWidth + 2, bannerLabelY + this.font.lineHeight + 1,
+                0xFF1A1A1A // dark background behind text
+        );
+        // Draw the label text in golden color
+        graphics.text(this.font, bannerLabel, bannerLabelX, bannerLabelY, 0xFFD4A017, false);
+
+        // If the banner slot is empty, draw a small banner icon as placeholder
+        // to make it even more obvious what this slot is for
+        ItemStack bannerStack = guard.getBannerItem();
+        if (bannerStack.isEmpty()) {
+            // Draw a simple banner shape using fill rectangles (a small flag icon)
+            int iconX = this.leftPos + bannerSlotX + 3;
+            int iconY = this.topPos + bannerSlotY + 2;
+            // Banner pole (vertical line)
+            graphics.fill(iconX + 1, iconY, iconX + 2, iconY + 13, 0xFF8B7355);
+            // Banner flag (3x6 colored rectangle)
+            graphics.fill(iconX + 2, iconY + 1, iconX + 7, iconY + 6, 0xFFCC3333);
+            // Flag detail line
+            graphics.fill(iconX + 2, iconY + 3, iconX + 7, iconY + 4, 0xFF992222);
+        }
 
         if (!GuardConfig.CLIENT.guardInventoryNumbers || guard.getMaxHealth() > 20) {
             graphics.text(font, guardHealthText, 80, 30, -12566464, false);
