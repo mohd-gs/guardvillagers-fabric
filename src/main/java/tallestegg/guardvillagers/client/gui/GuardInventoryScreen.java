@@ -117,30 +117,32 @@ public class GuardInventoryScreen extends AbstractContainerScreen<GuardContainer
         int yValueWithOrWithoutArmor = armor <= 0 ? 20 : 30;
 
         // === Banner slot label and border ===
-        // These are drawn in extractLabels (AFTER slots) so they appear ON TOP
-        // of the slot area as a visual indicator, not behind items.
+        // NOTE: extractLabels uses GUI-relative coordinates because the graphics
+        // context is already translated by (leftPos, topPos) before this method
+        // is called (see AbstractContainerScreen.extractContents). Do NOT add
+        // leftPos/topPos here — that would cause a double-offset.
         int bannerSlotX = 77;
         int bannerSlotY = 8;
 
         // Draw border around the banner slot (golden-brown, fully opaque)
         // Top
-        graphics.fill(this.leftPos + bannerSlotX - 1, this.topPos + bannerSlotY - 1,
-                this.leftPos + bannerSlotX + 17, this.topPos + bannerSlotY, 0xFF8B6914);
+        graphics.fill(bannerSlotX - 1, bannerSlotY - 1,
+                bannerSlotX + 17, bannerSlotY, 0xFF8B6914);
         // Bottom
-        graphics.fill(this.leftPos + bannerSlotX - 1, this.topPos + bannerSlotY + 16,
-                this.leftPos + bannerSlotX + 17, this.topPos + bannerSlotY + 17, 0xFF8B6914);
+        graphics.fill(bannerSlotX - 1, bannerSlotY + 16,
+                bannerSlotX + 17, bannerSlotY + 17, 0xFF8B6914);
         // Left
-        graphics.fill(this.leftPos + bannerSlotX - 1, this.topPos + bannerSlotY - 1,
-                this.leftPos + bannerSlotX, this.topPos + bannerSlotY + 17, 0xFF8B6914);
+        graphics.fill(bannerSlotX - 1, bannerSlotY - 1,
+                bannerSlotX, bannerSlotY + 17, 0xFF8B6914);
         // Right
-        graphics.fill(this.leftPos + bannerSlotX + 16, this.topPos + bannerSlotY - 1,
-                this.leftPos + bannerSlotX + 17, this.topPos + bannerSlotY + 17, 0xFF8B6914);
+        graphics.fill(bannerSlotX + 16, bannerSlotY - 1,
+                bannerSlotX + 17, bannerSlotY + 17, 0xFF8B6914);
 
         // Draw "Banner" label above the slot
         Component bannerLabel = Component.translatable("guardinventory.banner_slot");
         int bannerLabelWidth = this.font.width(bannerLabel);
-        int bannerLabelX = this.leftPos + bannerSlotX + 8 - bannerLabelWidth / 2;
-        int bannerLabelY = this.topPos + bannerSlotY - 11;
+        int bannerLabelX = bannerSlotX + 8 - bannerLabelWidth / 2;
+        int bannerLabelY = bannerSlotY - 11;
 
         // Draw dark background behind the label for readability
         graphics.fill(bannerLabelX - 2, bannerLabelY - 1,
